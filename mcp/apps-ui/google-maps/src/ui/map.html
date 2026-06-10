@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google Maps</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #09090b;
+        --fg-muted: #71717a;
+        --border: #e4e4e7;
+        --input-bg: #ffffff;
+        --btn-primary-bg: #18181b;
+        --btn-primary-fg: #fafafa;
+        --btn-secondary-bg: transparent;
+        --btn-secondary-fg: #09090b;
+        --focus-ring: #09090b;
+        --accent: #4285f4;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        background: var(--bg);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .map-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      #map {
+        flex: 1;
+        min-height: 300px;
+      }
+
+      .panel {
+        max-height: 40vh;
+        overflow-y: auto;
+        border-top: 1px solid var(--border);
+        padding: 16px 20px;
+      }
+
+      .panel:empty {
+        display: none;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .panel-header h2 {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .panel-header .badge {
+        font-size: 11px;
+        font-weight: 500;
+        background: var(--accent);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 10px;
+      }
+
+      .place-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        transition: opacity 0.1s;
+      }
+
+      .place-card:last-child {
+        border-bottom: none;
+      }
+
+      .place-card:hover {
+        opacity: 0.7;
+      }
+
+      .place-card .marker-num {
+        width: 24px;
+        height: 24px;
+        min-width: 24px;
+        background: var(--accent);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 2px;
+      }
+
+      .place-info h3 {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+
+      .place-info p {
+        font-size: 12px;
+        color: var(--fg-muted);
+        margin-bottom: 2px;
+      }
+
+      .place-info .rating {
+        font-size: 12px;
+        color: #f59e0b;
+      }
+
+      .directions-panel {
+        padding: 0;
+      }
+
+      .directions-summary {
+        display: flex;
+        gap: 16px;
+        padding: 12px 20px;
+        background: #f4f4f5;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .directions-summary .stat {
+        text-align: center;
+      }
+
+      .directions-summary .stat-value {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .directions-summary .stat-label {
+        font-size: 11px;
+        color: var(--fg-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .step {
+        display: flex;
+        gap: 12px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+      }
+
+      .step:last-child {
+        border-bottom: none;
+      }
+
+      .step-num {
+        width: 22px;
+        min-width: 22px;
+        height: 22px;
+        background: var(--border);
+        color: var(--fg);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 1px;
+      }
+
+      .step-detail {
+        flex: 1;
+      }
+
+      .step-detail .instruction {
+        margin-bottom: 2px;
+      }
+
+      .step-detail .meta {
+        font-size: 12px;
+        color: var(--fg-muted);
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 48px 0;
+        font-size: 13px;
+        color: var(--fg-muted);
+        flex: 1;
+      }
+
+      .loading::after {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 1.5px solid var(--border);
+        border-top-color: var(--fg);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .error {
+        padding: 10px 14px;
+        border: 1px solid #fca5a5;
+        border-radius: 6px;
+        color: #b91c1c;
+        font-size: 13px;
+        line-height: 1.5;
+        margin: 20px;
+      }
+
+      .geocode-result {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .geocode-result:last-child {
+        border-bottom: none;
+      }
+
+      .geocode-result h3 {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+
+      .geocode-result p {
+        font-size: 12px;
+        color: var(--fg-muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="map-container">
+      <div id="map">
+        <div class="loading">Loading map...</div>
+      </div>
+      <div class="panel" id="panel"></div>
+    </div>
+
+    <script type="module">
+      // MCP App class for communication (same pattern as ServiceNow form)
+      class App {
+        constructor(options) {
+          this.name = options.name;
+          this.version = options.version;
+          this.ontoolresult = null;
+          this.onrenderdata = null;
+          this._messageId = 0;
+          this._pendingRequests = new Map();
+          this._queuedMessages = [];
+        }
+
+        connect() {
+          window.addEventListener("message", (event) => {
+            const message = event.data;
+            let renderData = null;
+
+            if (
+              message.method === "ui/notifications/tool-result" &&
+              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
+            ) {
+              renderData =
+                message.params._meta["mcpui.dev/ui-initial-render-data"];
+            } else if (message.type === "renderData" && message.data) {
+              renderData = message.data;
+            } else if (
+              (message.type === "init" || message.type === "initialData") &&
+              message.data
+            ) {
+              renderData = message.data;
+            } else if (message.center || message.markers || message.directions) {
+              renderData = message;
+            } else if (message.renderData) {
+              renderData = message.renderData;
+            }
+
+            if (renderData) {
+              if (this.onrenderdata) {
+                this.onrenderdata(renderData);
+              } else {
+                this._queuedMessages.push(renderData);
+              }
+            }
+
+            if (message.type === "toolResult" && this.ontoolresult) {
+              this.ontoolresult(message.result);
+            }
+
+            if (
+              message.jsonrpc === "2.0" &&
+              message.id &&
+              this._pendingRequests.has(message.id)
+            ) {
+              const { resolve, reject } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              if (message.error) {
+                reject(new Error(message.error.message || "Tool call failed"));
+              } else {
+                resolve(message.result);
+              }
+            } else if (message.id && this._pendingRequests.has(message.id)) {
+              const { resolve } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              resolve(message.result);
+            }
+          });
+          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+        }
+
+        processQueue() {
+          while (this._queuedMessages.length > 0 && this.onrenderdata) {
+            const data = this._queuedMessages.shift();
+            this.onrenderdata(data);
+          }
+        }
+
+        async callServerTool(params) {
+          const id = ++this._messageId;
+          return new Promise((resolve, reject) => {
+            this._pendingRequests.set(id, { resolve, reject });
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                method: "tools/call",
+                id,
+                params: {
+                  name: params.name,
+                  arguments: params.arguments,
+                },
+              },
+              "*",
+            );
+          });
+        }
+      }
+
+      const app = new App({ name: "Google Maps", version: "1.0.0" });
+      const mapEl = document.getElementById("map");
+      const panelEl = document.getElementById("panel");
+
+      let map = null;
+      let markers = [];
+      let directionsRenderer = null;
+      let infoWindow = null;
+      let mapReady = false;
+      let pendingRenderData = null;
+
+      /**
+       * Try to get schema from multiple sources for maximum compatibility.
+       */
+      function getEmbeddedSchema() {
+        if (window.MAP_DATA) return window.MAP_DATA;
+
+        const container = document.querySelector(".map-container");
+        const schemaAttr = container?.getAttribute("data-schema");
+        if (schemaAttr) {
+          try {
+            return JSON.parse(schemaAttr);
+          } catch (e) {
+            console.error("Failed to parse schema from data attribute:", e);
+          }
+        }
+
+        return null;
+      }
+
+      // Load Google Maps JavaScript API dynamically
+      function loadGoogleMaps(apiKey) {
+        return new Promise((resolve, reject) => {
+          if (window.google?.maps) {
+            resolve();
+            return;
+          }
+
+          const script = document.createElement("script");
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`;
+          script.async = true;
+          script.defer = true;
+          script.onload = () => resolve();
+          script.onerror = () =>
+            reject(new Error("Failed to load Google Maps API"));
+          document.head.appendChild(script);
+        });
+      }
+
+      function initMap(center, zoom) {
+        mapEl.innerHTML = "";
+        map = new google.maps.Map(mapEl, {
+          center: center || { lat: 40.7128, lng: -74.006 },
+          zoom: zoom || 12,
+          mapTypeControl: true,
+          streetViewControl: false,
+          fullscreenControl: false,
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }],
+            },
+          ],
+        });
+
+        infoWindow = new google.maps.InfoWindow();
+        directionsRenderer = new google.maps.DirectionsRenderer({
+          map: map,
+          suppressMarkers: false,
+          polylineOptions: {
+            strokeColor: "#4285f4",
+            strokeWeight: 5,
+            strokeOpacity: 0.8,
+          },
+        });
+
+        mapReady = true;
+      }
+
+      function clearMarkers() {
+        markers.forEach((m) => m.setMap(null));
+        markers = [];
+        if (directionsRenderer) {
+          directionsRenderer.setDirections({ routes: [] });
+        }
+      }
+
+      function renderPlaces(data) {
+        clearMarkers();
+        const places = data.places || [];
+        const bounds = new google.maps.LatLngBounds();
+
+        places.forEach((place, index) => {
+          const position = place.geometry.location;
+          const marker = new google.maps.Marker({
+            position,
+            map,
+            title: place.name,
+            label: {
+              text: String(index + 1),
+              color: "white",
+              fontSize: "12px",
+              fontWeight: "600",
+            },
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: "#4285f4",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+              scale: 14,
+            },
+          });
+
+          const ratingStars = place.rating
+            ? "★".repeat(Math.round(place.rating)) +
+              ` ${place.rating} (${place.user_ratings_total || 0})`
+            : "";
+
+          marker.addListener("click", () => {
+            infoWindow.setContent(`
+              <div style="font-family: -apple-system, sans-serif; max-width: 250px;">
+                <strong style="font-size: 13px;">${escapeHtml(place.name)}</strong>
+                <p style="font-size: 12px; color: #666; margin: 4px 0;">${escapeHtml(place.formatted_address)}</p>
+                ${ratingStars ? `<p style="font-size: 12px; color: #f59e0b;">${ratingStars}</p>` : ""}
+              </div>
+            `);
+            infoWindow.open(map, marker);
+          });
+
+          markers.push(marker);
+          bounds.extend(position);
+        });
+
+        if (places.length > 0) {
+          map.fitBounds(bounds);
+          if (places.length === 1) {
+            map.setZoom(15);
+          }
+        }
+
+        // Render panel
+        let html = `
+          <div class="panel-header">
+            <h2>Places</h2>
+            <span class="badge">${places.length} results</span>
+          </div>
+        `;
+
+        places.forEach((place, index) => {
+          const ratingStars = place.rating
+            ? `<span class="rating">${"★".repeat(Math.round(place.rating))} ${place.rating}</span>`
+            : "";
+
+          html += `
+            <div class="place-card" data-index="${index}">
+              <div class="marker-num">${index + 1}</div>
+              <div class="place-info">
+                <h3>${escapeHtml(place.name)}</h3>
+                <p>${escapeHtml(place.formatted_address)}</p>
+                ${ratingStars}
+              </div>
+            </div>
+          `;
+        });
+
+        panelEl.innerHTML = html;
+
+        // Click handlers to focus markers
+        panelEl.querySelectorAll(".place-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            const idx = parseInt(card.dataset.index);
+            const marker = markers[idx];
+            if (marker) {
+              google.maps.event.trigger(marker, "click");
+              map.panTo(marker.getPosition());
+              map.setZoom(15);
+            }
+          });
+        });
+      }
+
+      function renderDirections(data) {
+        clearMarkers();
+        const route = data.directions;
+        if (!route || !route.routes?.length) {
+          panelEl.innerHTML = '<div class="error">No route found.</div>';
+          return;
+        }
+
+        // Use DirectionsRenderer to display the route
+        directionsRenderer.setDirections(route);
+
+        const leg = route.routes[0].legs[0];
+        let html = `
+          <div class="directions-panel">
+            <div class="directions-summary">
+              <div class="stat">
+                <div class="stat-value">${leg.distance.text}</div>
+                <div class="stat-label">Distance</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value">${leg.duration.text}</div>
+                <div class="stat-label">Duration</div>
+              </div>
+            </div>
+        `;
+
+        leg.steps.forEach((step, index) => {
+          html += `
+            <div class="step">
+              <div class="step-num">${index + 1}</div>
+              <div class="step-detail">
+                <div class="instruction">${step.html_instructions}</div>
+                <div class="meta">${step.distance.text} · ${step.duration.text}</div>
+              </div>
+            </div>
+          `;
+        });
+
+        html += "</div>";
+        panelEl.innerHTML = html;
+      }
+
+      function renderPlaceDetails(data) {
+        clearMarkers();
+        const place = data.placeDetails;
+        if (!place) return;
+
+        const position = place.geometry.location;
+        const marker = new google.maps.Marker({
+          position,
+          map,
+          title: place.name,
+        });
+        markers.push(marker);
+        map.setCenter(position);
+        map.setZoom(16);
+
+        const ratingStars = place.rating
+          ? "★".repeat(Math.round(place.rating)) +
+            ` ${place.rating} (${place.user_ratings_total || 0} reviews)`
+          : "";
+
+        let html = `
+          <div class="panel-header">
+            <h2>${escapeHtml(place.name)}</h2>
+          </div>
+          <p style="font-size: 13px; color: var(--fg-muted); margin-bottom: 8px;">${escapeHtml(place.formatted_address)}</p>
+          ${ratingStars ? `<p style="font-size: 13px; color: #f59e0b; margin-bottom: 8px;">${ratingStars}</p>` : ""}
+        `;
+
+        if (place.formatted_phone_number) {
+          html += `<p style="font-size: 13px; margin-bottom: 4px;">Phone: ${escapeHtml(place.formatted_phone_number)}</p>`;
+        }
+        if (place.website) {
+          html += `<p style="font-size: 13px; margin-bottom: 4px;">Website: <a href="${escapeHtml(place.website)}" target="_blank" rel="noopener" style="color: var(--accent);">${escapeHtml(place.website)}</a></p>`;
+        }
+        if (place.opening_hours?.weekday_text?.length) {
+          html += `<div style="margin-top: 12px;"><strong style="font-size: 13px;">Hours</strong>`;
+          place.opening_hours.weekday_text.forEach((line) => {
+            html += `<p style="font-size: 12px; color: var(--fg-muted);">${escapeHtml(line)}</p>`;
+          });
+          html += `</div>`;
+        }
+        if (place.reviews?.length) {
+          html += `<div style="margin-top: 12px;"><strong style="font-size: 13px;">Reviews</strong>`;
+          place.reviews.slice(0, 3).forEach((review) => {
+            html += `
+              <div style="margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+                <div style="font-size: 12px; font-weight: 600;">${escapeHtml(review.author_name)} <span style="color: #f59e0b;">${"★".repeat(review.rating)}</span></div>
+                <p style="font-size: 12px; color: var(--fg-muted); margin-top: 4px;">${escapeHtml(review.text?.substring(0, 200) || "")}${review.text?.length > 200 ? "..." : ""}</p>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        panelEl.innerHTML = html;
+      }
+
+      function renderGeocodeResults(data) {
+        clearMarkers();
+        const results = data.geocodeResults || [];
+        const bounds = new google.maps.LatLngBounds();
+
+        results.forEach((result, index) => {
+          const position = result.geometry.location;
+          const marker = new google.maps.Marker({
+            position,
+            map,
+            title: result.formatted_address,
+          });
+          markers.push(marker);
+          bounds.extend(position);
+        });
+
+        if (results.length > 0) {
+          map.fitBounds(bounds);
+          if (results.length === 1) {
+            map.setZoom(15);
+          }
+        }
+
+        let html = `
+          <div class="panel-header">
+            <h2>Geocode Results</h2>
+            <span class="badge">${results.length} results</span>
+          </div>
+        `;
+
+        results.forEach((result) => {
+          const loc = result.geometry.location;
+          html += `
+            <div class="geocode-result">
+              <h3>${escapeHtml(result.formatted_address)}</h3>
+              <p>Lat: ${loc.lat}, Lng: ${loc.lng}</p>
+              <p>Place ID: ${escapeHtml(result.place_id)}</p>
+            </div>
+          `;
+        });
+
+        panelEl.innerHTML = html;
+      }
+
+      function handleRenderData(data) {
+        if (!mapReady) {
+          pendingRenderData = data;
+          return;
+        }
+
+        try {
+          if (data.center) {
+            map.setCenter(data.center);
+          }
+          if (data.zoom) {
+            map.setZoom(data.zoom);
+          }
+
+          if (data.type === "places" && data.places) {
+            renderPlaces(data);
+          } else if (data.type === "directions" && data.directions) {
+            renderDirections(data);
+          } else if (data.type === "placeDetails" && data.placeDetails) {
+            renderPlaceDetails(data);
+          } else if (data.type === "geocode" && data.geocodeResults) {
+            renderGeocodeResults(data);
+          } else if (data.places) {
+            renderPlaces(data);
+          } else if (data.directions) {
+            renderDirections(data);
+          } else if (data.placeDetails) {
+            renderPlaceDetails(data);
+          }
+        } catch (e) {
+          console.error("Error handling render data:", e);
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      // Initialize
+      async function boot() {
+        const embedded = getEmbeddedSchema();
+        const apiKey = embedded?.apiKey || window.MAP_DATA?.apiKey;
+
+        if (!apiKey) {
+          // Wait for render data with API key
+          app.connect();
+
+          app.onrenderdata = async (data) => {
+            if (data.apiKey && !mapReady) {
+              try {
+                await loadGoogleMaps(data.apiKey);
+                initMap(data.center, data.zoom);
+                handleRenderData(data);
+              } catch (e) {
+                mapEl.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+              }
+            } else {
+              handleRenderData(data);
+            }
+          };
+
+          app.ontoolresult = (result) => {
+            try {
+              const textContent = result.content?.find(
+                (c) => c.type === "text",
+              )?.text;
+              if (textContent) {
+                const data = JSON.parse(textContent);
+                handleRenderData(data);
+              }
+            } catch (e) {
+              console.error("Error processing tool result:", e);
+            }
+          };
+
+          app.processQueue();
+          return;
+        }
+
+        try {
+          await loadGoogleMaps(apiKey);
+          initMap(embedded?.center, embedded?.zoom);
+
+          if (embedded) {
+            handleRenderData(embedded);
+          }
+        } catch (e) {
+          mapEl.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+          return;
+        }
+
+        app.connect();
+
+        app.onrenderdata = (data) => handleRenderData(data);
+        app.ontoolresult = (result) => {
+          try {
+            const textContent = result.content?.find(
+              (c) => c.type === "text",
+            )?.text;
+            if (textContent) {
+              const data = JSON.parse(textContent);
+              handleRenderData(data);
+            }
+          } catch (e) {
+            console.error("Error processing tool result:", e);
+          }
+        };
+
+        app.processQueue();
+      }
+
+      boot();
+    </script>
+  </body>
+</html>
