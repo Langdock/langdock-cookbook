@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ServiceNow Form</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #09090b;
+        --fg-muted: #71717a;
+        --border: #e4e4e7;
+        --input-bg: #ffffff;
+        --btn-primary-bg: #18181b;
+        --btn-primary-fg: #fafafa;
+        --btn-secondary-bg: transparent;
+        --btn-secondary-fg: #09090b;
+        --focus-ring: #09090b;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        padding: 20px;
+        background: var(--bg);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .form-container {
+        max-width: 520px;
+        margin: 0 auto;
+      }
+
+      .form-header {
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .form-header h1 {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin-bottom: 2px;
+      }
+
+      .form-header p {
+        font-size: 13px;
+        color: var(--fg-muted);
+      }
+
+      .form-group {
+        margin-bottom: 16px;
+      }
+
+      .form-group label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 6px;
+      }
+
+      .form-group label .required {
+        color: #ef4444;
+        margin-left: 2px;
+      }
+
+      .form-group input:not([type="checkbox"]),
+      .form-group textarea,
+      .form-group select {
+        width: 100%;
+        height: 36px;
+        padding: 0 10px;
+        font-size: 13px;
+        font-family: inherit;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--input-bg);
+        color: var(--fg);
+        transition: border-color 0.15s;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+
+      .form-group input:not([type="checkbox"]):hover,
+      .form-group textarea:hover,
+      .form-group select:hover {
+        border-color: #c4c4c7;
+      }
+
+      .form-group textarea {
+        height: auto;
+        min-height: 76px;
+        padding: 8px 10px;
+        resize: vertical;
+        line-height: 1.5;
+      }
+
+      .form-group select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 28px;
+        cursor: pointer;
+      }
+
+      .form-group input:not([type="checkbox"]):focus,
+      .form-group textarea:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 3px rgba(9, 9, 11, 0.08);
+      }
+
+      .form-group input::placeholder,
+      .form-group textarea::placeholder {
+        color: var(--fg-muted);
+      }
+
+      .checkbox-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      .form-group input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
+        min-width: 15px;
+        padding: 0;
+        cursor: pointer;
+        accent-color: var(--btn-primary-bg);
+        flex-shrink: 0;
+        appearance: auto;
+        -webkit-appearance: auto;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: var(--fg-muted);
+        margin-top: 4px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 34px;
+        padding: 0 14px;
+        font-size: 13px;
+        font-weight: 500;
+        font-family: inherit;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: opacity 0.1s;
+        white-space: nowrap;
+        border: 1px solid var(--border);
+      }
+
+      .btn:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      .btn-primary {
+        background: var(--btn-primary-bg);
+        color: var(--btn-primary-fg);
+        border-color: var(--btn-primary-bg);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        opacity: 0.88;
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: var(--btn-secondary-bg);
+        color: var(--btn-secondary-fg);
+        margin-right: 8px;
+      }
+
+      .btn-secondary:hover {
+        opacity: 0.7;
+      }
+
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 48px 0;
+        font-size: 13px;
+        color: var(--fg-muted);
+      }
+
+      .loading::after {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 1.5px solid var(--border);
+        border-top-color: var(--fg);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .success {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 13px;
+      }
+
+      .success h3 {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .error {
+        padding: 10px 14px;
+        border: 1px solid #fca5a5;
+        border-radius: 6px;
+        color: #b91c1c;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="form-container">
+      <div id="content">
+        <div class="loading">Loading form...</div>
+      </div>
+    </div>
+
+    <script type="module">
+      // MCP App class for communication
+      class App {
+        constructor(options) {
+          this.name = options.name;
+          this.version = options.version;
+          this.ontoolresult = null;
+          this.onrenderdata = null;
+          this._messageId = 0;
+          this._pendingRequests = new Map();
+          this._queuedMessages = [];
+        }
+
+        connect() {
+          window.addEventListener("message", (event) => {
+            const message = event.data;
+
+            // Try to extract render data from various message formats
+            let renderData = null;
+
+            // Format 1: JSON-RPC from mcpJam - { method: "ui/notifications/tool-result", params: { _meta: {...} } }
+            if (
+              message.method === "ui/notifications/tool-result" &&
+              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
+            ) {
+              renderData =
+                message.params._meta["mcpui.dev/ui-initial-render-data"];
+            }
+            // Format 2: { type: "renderData", data: {...} }
+            else if (message.type === "renderData" && message.data) {
+              renderData = message.data;
+            }
+            // Format 3: { type: "init", data: {...} } or { type: "initialData", data: {...} }
+            else if (
+              (message.type === "init" || message.type === "initialData") &&
+              message.data
+            ) {
+              renderData = message.data;
+            }
+            // Format 4: Direct data with table/fields (no type wrapper)
+            else if (message.table && message.fields) {
+              renderData = message;
+            }
+            // Format 5: { renderData: {...} } without type
+            else if (message.renderData) {
+              renderData = message.renderData;
+            }
+
+            if (renderData) {
+              if (this.onrenderdata) {
+                this.onrenderdata(renderData);
+              } else {
+                // Queue for later if handler not set yet
+                this._queuedMessages.push(renderData);
+              }
+            }
+
+            // Handle tool result (legacy pattern)
+            if (message.type === "toolResult" && this.ontoolresult) {
+              this.ontoolresult(message.result);
+            }
+
+            // Handle JSON-RPC responses (for tool calls)
+            if (
+              message.jsonrpc === "2.0" &&
+              message.id &&
+              this._pendingRequests.has(message.id)
+            ) {
+              const { resolve, reject } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              if (message.error) {
+                reject(new Error(message.error.message || "Tool call failed"));
+              } else {
+                resolve(message.result);
+              }
+            }
+            // Legacy response format
+            else if (message.id && this._pendingRequests.has(message.id)) {
+              const { resolve } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              resolve(message.result);
+            }
+          });
+          // Notify host that we're ready
+          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+        }
+
+        // Process any queued messages after handler is set
+        processQueue() {
+          while (this._queuedMessages.length > 0 && this.onrenderdata) {
+            const data = this._queuedMessages.shift();
+            this.onrenderdata(data);
+          }
+        }
+
+        async callServerTool(params) {
+          const id = ++this._messageId;
+          return new Promise((resolve, reject) => {
+            this._pendingRequests.set(id, { resolve, reject });
+            // Use JSON-RPC format for mcpJam compatibility
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                method: "tools/call",
+                id,
+                params: {
+                  name: params.name,
+                  arguments: params.arguments,
+                },
+              },
+              "*",
+            );
+          });
+        }
+      }
+
+      const app = new App({ name: "ServiceNow Form", version: "1.0.0" });
+      const contentEl = document.getElementById("content");
+
+      let currentTable = "";
+      let formFields = [];
+      let prefillData = {};
+
+      function parseToolTextPayload(text) {
+        if (typeof text !== "string") return null;
+        try {
+          return JSON.parse(text);
+        } catch {
+          return text;
+        }
+      }
+
+      /**
+       * Try to get schema from multiple sources for maximum compatibility:
+       * 1. window.FORM_SCHEMA (inline script injection)
+       * 2. data-schema attribute on container (CSP-safe fallback)
+       */
+      function getEmbeddedSchema() {
+        // Method 1: Check inline script variable
+        if (window.FORM_SCHEMA) {
+          return window.FORM_SCHEMA;
+        }
+
+        // Method 2: Check data attribute (CSP-safe fallback)
+        const container = document.querySelector(".form-container");
+        const schemaAttr = container?.getAttribute("data-schema");
+        if (schemaAttr) {
+          try {
+            return JSON.parse(schemaAttr);
+          } catch (e) {
+            console.error("Failed to parse schema from data attribute:", e);
+          }
+        }
+
+        return null;
+      }
+
+      // Check for embedded schema (self-contained mode)
+      const embeddedSchema = getEmbeddedSchema();
+      if (embeddedSchema) {
+        currentTable = embeddedSchema.table;
+        formFields = embeddedSchema.fields;
+        prefillData = embeddedSchema.prefill || {};
+        renderForm(embeddedSchema);
+      }
+
+      // Connect to host EARLY to start receiving messages
+      // Messages will be queued until handlers are set
+      app.connect();
+
+      // Handle initial render data from MCP Apps host (via _meta)
+      app.onrenderdata = (data) => {
+        try {
+          if (data.table && data.fields) {
+            currentTable = data.table;
+            formFields = data.fields;
+            prefillData = data.prefill || {};
+            renderForm(data);
+          }
+        } catch (e) {
+          console.error("Error processing render data:", e);
+        }
+      };
+
+      // Handle incoming tool results (fallback for MCP app mode)
+      app.ontoolresult = (result) => {
+        try {
+          const textContent = result.content?.find(
+            (c) => c.type === "text",
+          )?.text;
+          if (textContent) {
+            const data = parseToolTextPayload(textContent);
+            if (data && typeof data === "object" && data.table && data.fields) {
+              currentTable = data.table;
+              formFields = data.fields;
+              renderForm(data);
+            } else if (data && typeof data === "object" && data.sys_id) {
+              // Successful submission
+              renderSuccess(data);
+            } else if (typeof data === "string") {
+              renderError(data);
+            }
+          }
+        } catch (e) {
+          console.error("Error processing tool result:", e);
+        }
+      };
+
+      // Process any messages that arrived before handlers were set
+      app.processQueue();
+
+      function toTitleCase(str) {
+        return str.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      function renderForm(schema) {
+        const editableFields = schema.fields.filter((f) => !f.readOnly);
+        const tableLabel = toTitleCase(schema.table);
+
+        let html = `
+        <div class="form-header">
+          <h1>${tableLabel}</h1>
+          <p>Fill in the fields below to create a new record</p>
+        </div>
+        <form id="servicenow-form">
+      `;
+
+        for (const field of editableFields) {
+          html += renderField(field);
+        }
+
+        html += `
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset</button>
+          <button type="submit" class="btn btn-primary" id="submit-btn">Submit</button>
+        </div>
+        </form>
+      `;
+
+        contentEl.innerHTML = html;
+
+        document
+          .getElementById("servicenow-form")
+          .addEventListener("submit", handleSubmit);
+      }
+
+      function renderField(field) {
+        const required = field.required
+          ? '<span class="required">*</span>'
+          : "";
+        const maxLength = field.maxLength
+          ? `maxlength="${field.maxLength}"`
+          : "";
+        // Use prefill data if available, otherwise fall back to field default
+        const defaultVal = prefillData[field.name] ?? field.defaultValue ?? "";
+        // Escape HTML to prevent XSS
+        const escapeHtml = (str) =>
+          String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        const safeVal = escapeHtml(defaultVal);
+
+        let input = "";
+
+        switch (field.inputType) {
+          case "textarea":
+            input = `<textarea name="${field.name}" id="${field.name}" ${maxLength} ${field.required ? "required" : ""}>${safeVal}</textarea>`;
+            break;
+
+          case "select":
+            const options = (field.choices || [])
+              .map(
+                (c) =>
+                  `<option value="${c.value}"${c.value === defaultVal ? " selected" : ""}>${c.label}</option>`,
+              )
+              .join("");
+            input = `<select name="${field.name}" id="${field.name}" ${field.required ? "required" : ""}>
+            <option value="">Select an option</option>
+            ${options}
+          </select>`;
+            break;
+
+          case "boolean":
+            const isChecked =
+              defaultVal === "true" || defaultVal === true ? "checked" : "";
+            input = `<label class="checkbox-wrapper" for="${field.name}">
+            <input type="checkbox" name="${field.name}" id="${field.name}" value="true" ${isChecked}>
+            <span>${field.label}</span>
+          </label>`;
+            return `<div class="form-group">${input}</div>`;
+
+          case "number":
+            input = `<input type="number" name="${field.name}" id="${field.name}" value="${safeVal}" ${field.required ? "required" : ""}>`;
+            break;
+
+          case "date":
+            input = `<input type="date" name="${field.name}" id="${field.name}" value="${safeVal}" ${field.required ? "required" : ""}>`;
+            break;
+
+          case "datetime":
+            input = `<input type="datetime-local" name="${field.name}" id="${field.name}" value="${safeVal}" ${field.required ? "required" : ""}>`;
+            break;
+
+          case "reference":
+            const refTable =
+              typeof field.referenceTable === "string"
+                ? field.referenceTable
+                : field.referenceTable?.name ||
+                  field.referenceTable?.label ||
+                  "";
+            input = `<input type="text" name="${field.name}" id="${field.name}" placeholder="${refTable ? "Search " + toTitleCase(refTable) + "..." : "Enter sys_id"}" value="${safeVal}" ${maxLength} ${field.required ? "required" : ""}>`;
+            break;
+
+          default:
+            input = `<input type="text" name="${field.name}" id="${field.name}" value="${safeVal}" ${maxLength} ${field.required ? "required" : ""}>`;
+        }
+
+        let hint = "";
+        if (field.hint) {
+          hint = `<div class="hint">${field.hint}</div>`;
+        } else if (field.referenceTable) {
+          const refName =
+            typeof field.referenceTable === "string"
+              ? field.referenceTable
+              : field.referenceTable?.name || field.referenceTable?.label || "";
+          if (refName)
+            hint = `<div class="hint">References ${toTitleCase(refName)}</div>`;
+        }
+
+        return `
+        <div class="form-group">
+          <label for="${field.name}">${field.label}${required}</label>
+          ${input}
+          ${hint}
+        </div>
+      `;
+      }
+
+      async function handleSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const submitBtn = document.getElementById("submit-btn");
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Submitting...";
+
+        const formData = new FormData(form);
+        const data = {};
+
+        for (const field of formFields) {
+          if (field.readOnly) continue;
+
+          if (field.inputType === "boolean") {
+            data[field.name] = formData.has(field.name) ? "true" : "false";
+          } else {
+            const value = formData.get(field.name);
+            if (value) {
+              data[field.name] = value;
+            }
+          }
+        }
+
+        try {
+          const result = await app.callServerTool({
+            name: "submit_form",
+            arguments: {
+              table: currentTable,
+              data: data,
+            },
+          });
+
+          const textContent = result.content?.find(
+            (c) => c.type === "text",
+          )?.text;
+          if (textContent) {
+            const responseData = parseToolTextPayload(textContent);
+            if (
+              responseData &&
+              typeof responseData === "object" &&
+              responseData.sys_id
+            ) {
+              renderSuccess(responseData);
+            } else if (typeof responseData === "string") {
+              throw new Error(responseData);
+            } else {
+              throw new Error("Unexpected response format");
+            }
+          }
+        } catch (error) {
+          renderError(error.message || "Failed to submit form");
+        }
+      }
+
+      function renderSuccess(data) {
+        contentEl.innerHTML = `
+        <div class="success">
+          <h3>Record created successfully</h3>
+          <p>Record ID: <strong>${data.sys_id}</strong></p>
+          ${data.number ? `<p>Number: <strong>${data.number}</strong></p>` : ""}
+        </div>
+        <div class="actions" style="border-top: none; margin-top: 16px; padding-top: 0;">
+          <button type="button" class="btn btn-primary" onclick="location.reload()">Create Another</button>
+        </div>
+      `;
+      }
+
+      function renderError(message) {
+        const submitBtn = document.getElementById("submit-btn");
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Submit";
+        }
+
+        const errorDiv = document.createElement("div");
+        errorDiv.className = "error";
+        errorDiv.style.marginBottom = "16px";
+        errorDiv.textContent = message;
+
+        const existingError = contentEl.querySelector(".error");
+        if (existingError) {
+          existingError.remove();
+        }
+
+        const form = document.getElementById("servicenow-form");
+        if (form) {
+          form.insertBefore(errorDiv, form.firstChild);
+        }
+      }
+
+      window.resetForm = function () {
+        const form = document.getElementById("servicenow-form");
+        if (form) form.reset();
+      };
+    </script>
+  </body>
+</html>
