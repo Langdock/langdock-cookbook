@@ -8,7 +8,7 @@
 ## Adding a recipe
 
 1. **Pick the right home.** Group by protocol first (`mcp/`, `a2a/`), then by the
-   problem the recipe solves (e.g. `mcp/authentication/`, `mcp/apps-ui/`). Add a
+   problem the recipe solves (e.g. `mcp/authentication/`, `mcp/apps/`). Add a
    new problem folder if none fits.
 2. **Keep it self-contained.** A recipe is a standalone, runnable project. It must
    not depend on files outside its own folder.
