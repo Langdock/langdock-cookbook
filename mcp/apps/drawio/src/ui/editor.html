@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>draw.io</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #09090b;
+        --fg-muted: #71717a;
+        --border: #e4e4e7;
+        --accent: #ff6600;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        background: var(--bg);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .diagram-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100%;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+      }
+
+      .title {
+        font-weight: 600;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .title .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        background: var(--accent);
+        flex: 0 0 auto;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
+      .btn {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 7px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.12s ease, opacity 0.12s ease;
+      }
+
+      .btn:hover:not(:disabled) {
+        background: #f4f4f5;
+      }
+
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      .editor-wrap {
+        position: relative;
+        flex: 1 1 auto;
+        min-height: 0;
+        background:
+          radial-gradient(circle, #e9e9ee 1px, transparent 1px) 0 0 / 22px 22px;
+      }
+
+      .editor-wrap iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: var(--bg);
+      }
+
+      /* Read-only fallback (draw.io viewer rendering inline SVG) */
+      #viewer-host {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        display: none;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      #viewer-host.active {
+        display: flex;
+      }
+
+      #viewer-host .mxgraph {
+        max-width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      }
+
+      .notice {
+        position: absolute;
+        left: 50%;
+        bottom: 10px;
+        transform: translateX(-50%);
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        display: none;
+        z-index: 2;
+      }
+
+      .notice.visible {
+        display: block;
+      }
+
+      .status {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 10px;
+        color: var(--fg-muted);
+        text-align: center;
+        padding: 24px;
+        z-index: 1;
+        background: var(--bg);
+      }
+
+      .status.hidden {
+        display: none;
+      }
+
+      .spinner {
+        width: 26px;
+        height: 26px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .error {
+        color: #b91c1c;
+        max-width: 440px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="diagram-container">
+      <header>
+        <div class="title">
+          <span class="dot"></span><span id="title">Diagram</span>
+        </div>
+        <div class="actions">
+          <button id="export-png" class="btn" disabled>PNG</button>
+          <button id="export-svg" class="btn" disabled>SVG</button>
+          <button id="export-xml" class="btn" disabled>XML</button>
+          <a id="edit" class="btn" href="https://app.diagrams.net/" target="_blank" rel="noopener">Edit in draw.io ↗</a>
+        </div>
+      </header>
+      <div class="editor-wrap">
+        <div id="status" class="status">
+          <div class="spinner"></div>
+          <div id="status-text">Loading the draw.io editor…</div>
+        </div>
+        <div id="viewer-host"></div>
+        <div id="notice" class="notice">
+          Editor unavailable — showing a read-only preview. Use “Edit in
+          draw.io” to edit.
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      // -----------------------------------------------------------------
+      // MCP App bridge — identical wiring to the google-maps reference, so
+      // the Langdock host delivers initial render data the same way it does
+      // for the app that already renders inline.
+      // -----------------------------------------------------------------
+      class App {
+        constructor(options) {
+          this.name = options.name;
+          this.version = options.version;
+          this.onrenderdata = null;
+          this._messageId = 0;
+          this._queuedMessages = [];
+        }
+
+        connect() {
+          window.addEventListener("message", (event) => {
+            const message = event.data;
+            if (!message || typeof message !== "object") return;
+            let renderData = null;
+
+            if (
+              message.method === "ui/notifications/tool-result" &&
+              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
+            ) {
+              renderData =
+                message.params._meta["mcpui.dev/ui-initial-render-data"];
+            } else if (message.type === "renderData" && message.data) {
+              renderData = message.data;
+            } else if (
+              (message.type === "init" || message.type === "initialData") &&
+              message.data
+            ) {
+              renderData = message.data;
+            } else if (
+              message.xml &&
+              typeof message.xml === "string" &&
+              !message.event
+            ) {
+              renderData = message;
+            } else if (message.renderData) {
+              renderData = message.renderData;
+            }
+
+            if (renderData) {
+              if (this.onrenderdata) this.onrenderdata(renderData);
+              else this._queuedMessages.push(renderData);
+            }
+          });
+          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+        }
+
+        processQueue() {
+          while (this._queuedMessages.length > 0 && this.onrenderdata) {
+            this.onrenderdata(this._queuedMessages.shift());
+          }
+        }
+
+        get messageId() {
+          return ++this._messageId;
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Primary: the full draw.io EDITOR (embed.diagrams.net) in a nested
+      // iframe, driven over its JSON postMessage protocol. The Langdock
+      // MCP-App sandbox applies no CSP today, so the nested iframe renders;
+      // the resource also declares `_meta.ui.csp.frameDomains` for hosts
+      // that do enforce resource-declared CSP.
+      //
+      // Fallback: if the editor never initializes (host enforcing
+      // `frame-src 'none'`, network block, …) we swap to the read-only
+      // draw.io VIEWER, loaded as an in-document script (no nested iframe).
+      // -----------------------------------------------------------------
+      const EMBED_URL =
+        "https://embed.diagrams.net/?embed=1&proto=json&spin=1&libraries=1&ui=min";
+      const VIEWER_SRC = "https://viewer.diagrams.net/js/viewer-static.min.js";
+      const EMPTY_XML =
+        '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>';
+      const EDITOR_INIT_TIMEOUT_MS = 12000;
+
+      const app = new App({ name: "draw.io", version: "1.0.0" });
+      const wrapEl = document.querySelector(".editor-wrap");
+      const viewerHostEl = document.getElementById("viewer-host");
+      const statusEl = document.getElementById("status");
+      const statusTextEl = document.getElementById("status-text");
+      const noticeEl = document.getElementById("notice");
+      const titleEl = document.getElementById("title");
+      const editEl = document.getElementById("edit");
+      const exportButtons = {
+        png: document.getElementById("export-png"),
+        svg: document.getElementById("export-svg"),
+        xml: document.getElementById("export-xml"),
+      };
+
+      let frame = null;
+      let editorReady = false;
+      let fallbackMode = false;
+      let initTimeout = null;
+      let latest = null; // most recent render data
+      let currentXml = null;
+
+      function showStatus(text, isError) {
+        statusEl.classList.remove("hidden");
+        statusTextEl.className = isError ? "error" : "";
+        statusTextEl.innerHTML = text;
+        const spinner = statusEl.querySelector(".spinner");
+        if (spinner) spinner.style.display = isError ? "none" : "block";
+      }
+      function hideStatus() {
+        statusEl.classList.add("hidden");
+      }
+
+      function setExportEnabled() {
+        exportButtons.png.disabled = !editorReady;
+        exportButtons.svg.disabled = !editorReady;
+        // XML export only needs the XML we already hold.
+        exportButtons.xml.disabled = !editorReady && !currentXml;
+      }
+
+      function getEmbeddedSchema() {
+        if (window.DIAGRAM_DATA) return window.DIAGRAM_DATA;
+        const container = document.querySelector(".diagram-container");
+        const schemaAttr = container?.getAttribute("data-schema");
+        if (schemaAttr) {
+          try {
+            return JSON.parse(schemaAttr);
+          } catch (e) {
+            console.error("Failed to parse data-schema:", e);
+          }
+        }
+        return null;
+      }
+
+      // -----------------------------------------------------------------
+      // Editor (nested iframe, JSON protocol)
+      // -----------------------------------------------------------------
+      function postToEditor(msg) {
+        if (frame?.contentWindow) {
+          frame.contentWindow.postMessage(JSON.stringify(msg), "*");
+        }
+      }
+
+      function ensureFrame() {
+        if (frame || fallbackMode) return;
+        frame = document.createElement("iframe");
+        frame.setAttribute("title", "draw.io editor");
+        frame.setAttribute("allow", "clipboard-read; clipboard-write");
+        frame.src = EMBED_URL;
+        frame.addEventListener("error", () => {
+          if (!editorReady) enterFallback();
+        });
+        wrapEl.insertBefore(frame, statusEl);
+
+        // If the embed never sends `init` (nested iframes blocked by a host
+        // CSP, offline, …) fall back to the read-only viewer.
+        initTimeout = setTimeout(() => {
+          if (!editorReady) enterFallback();
+        }, EDITOR_INIT_TIMEOUT_MS);
+      }
+
+      window.addEventListener("message", (event) => {
+        if (!frame || event.source !== frame.contentWindow) return;
+        if (typeof event.data !== "string" || event.data.length === 0) return;
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch (e) {
+          return;
+        }
+
+        switch (msg.event) {
+          case "init":
+            editorReady = true;
+            if (initTimeout) clearTimeout(initTimeout);
+            hideStatus();
+            setExportEnabled();
+            postToEditor({
+              action: "load",
+              autosave: 1,
+              xml: currentXml || EMPTY_XML,
+            });
+            break;
+          case "save":
+          case "autosave":
+            if (msg.xml) {
+              currentXml = msg.xml;
+              updateEditLink();
+            }
+            if (msg.event === "save") {
+              postToEditor({
+                action: "status",
+                messageKey: "allChangesSaved",
+                modified: false,
+              });
+            }
+            break;
+          case "export":
+            handleExport(msg);
+            break;
+          default:
+            break;
+        }
+      });
+
+      // -----------------------------------------------------------------
+      // Fallback: read-only viewer as an in-document script
+      // -----------------------------------------------------------------
+      function enterFallback() {
+        if (fallbackMode) return;
+        fallbackMode = true;
+        editorReady = false;
+        if (initTimeout) clearTimeout(initTimeout);
+        if (frame) {
+          frame.remove();
+          frame = null;
+        }
+        noticeEl.classList.add("visible");
+        setExportEnabled();
+
+        if (!currentXml) {
+          showStatus(
+            'The draw.io editor could not load here. ' +
+              'Use <strong>Edit in draw.io</strong> to draw in a new tab.',
+            false,
+          );
+          return;
+        }
+
+        loadViewerScript()
+          .then(() => renderViewer())
+          .catch(() => {
+            showStatus(
+              'Could not load the draw.io viewer. ' +
+                '<a href="https://app.diagrams.net" target="_blank" rel="noopener">Open draw.io ↗</a>',
+              true,
+            );
+          });
+      }
+
+      function loadViewerScript() {
+        return new Promise((resolve, reject) => {
+          if (window.GraphViewer) return resolve();
+          const s = document.createElement("script");
+          s.src = VIEWER_SRC;
+          s.async = true;
+          // GraphViewer auto-scans existing `.mxgraph` elements on load; we add
+          // ours only afterwards, so each diagram is rendered exactly once.
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error("viewer script failed to load"));
+          document.head.appendChild(s);
+        });
+      }
+
+      function renderViewer() {
+        if (!currentXml) return;
+        const config = {
+          highlight: "#0066cc",
+          nav: true,
+          resize: true,
+          toolbar: "zoom layers lightbox",
+          xml: currentXml,
+        };
+
+        viewerHostEl.classList.add("active");
+        viewerHostEl.innerHTML = "";
+        const el = document.createElement("div");
+        el.className = "mxgraph";
+        el.setAttribute("data-mxgraph", JSON.stringify(config));
+        viewerHostEl.appendChild(el);
+
+        try {
+          window.GraphViewer.createViewerForElement(el);
+          hideStatus();
+        } catch (e) {
+          console.error("render failed:", e);
+          showStatus("Failed to render the diagram.", true);
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Render data from the host / embedded schema
+      // -----------------------------------------------------------------
+      function applyRenderData(data) {
+        latest = data || {};
+        if (latest.title) titleEl.textContent = latest.title;
+        if (latest.xml && typeof latest.xml === "string") {
+          currentXml = latest.xml;
+        }
+        updateEditLink();
+        setExportEnabled();
+
+        if (fallbackMode) {
+          if (currentXml && window.GraphViewer) renderViewer();
+          return;
+        }
+        ensureFrame();
+        if (editorReady) {
+          postToEditor({
+            action: "load",
+            autosave: 1,
+            xml: currentXml || EMPTY_XML,
+          });
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Export
+      // -----------------------------------------------------------------
+      const EXPORT_FORMATS = {
+        png: { action: "xmlpng", ext: "png", mime: "image/png" },
+        svg: { action: "xmlsvg", ext: "svg", mime: "image/svg+xml" },
+        xml: { action: "xml", ext: "drawio", mime: "application/xml" },
+      };
+
+      function requestExport(kind) {
+        if (kind === "xml" && !editorReady) {
+          // Fallback path: download the XML we hold directly.
+          if (currentXml) downloadBlob(currentXml, "drawio", "application/xml");
+          return;
+        }
+        const fmt = EXPORT_FORMATS[kind];
+        if (!fmt || !editorReady) return;
+        postToEditor({ action: "export", format: fmt.action });
+      }
+
+      // The MCP-app sandbox lacks `allow-downloads`, so an anchor clicked in
+      // THIS document is silently dropped. When the host grants
+      // `allow-same-origin` on a same-origin sandbox (Langdock does), we can
+      // click the anchor in the PARENT document instead — the top frame is
+      // not sandboxed, so the download goes through. Falls back to a local
+      // click for hosts where the parent is cross-origin (throws) or the
+      // sandbox already permits downloads.
+      function triggerDownload(href, filename) {
+        let doc = document;
+        try {
+          if (window.parent !== window && window.parent.document) {
+            doc = window.parent.document;
+          }
+        } catch (e) {
+          /* cross-origin parent — use our own document */
+        }
+        const a = doc.createElement("a");
+        a.href = href;
+        a.download = filename;
+        doc.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+      function downloadBlob(data, ext, mime) {
+        const filename = `${(titleEl.textContent || "diagram").replace(/[^a-z0-9-_]+/gi, "-")}.${ext}`;
+        const href = URL.createObjectURL(new Blob([data], { type: mime }));
+        triggerDownload(href, filename);
+        setTimeout(() => URL.revokeObjectURL(href), 2000);
+      }
+
+      function handleExport(msg) {
+        try {
+          const ext =
+            msg.format === "xml"
+              ? "drawio"
+              : msg.format && msg.format.includes("svg")
+                ? "svg"
+                : "png";
+          const filename = `${(titleEl.textContent || "diagram").replace(/[^a-z0-9-_]+/gi, "-")}.${ext}`;
+          let href = msg.data;
+          if (!href || typeof href !== "string") {
+            downloadBlob(msg.xml || currentXml || "", "drawio", "application/xml");
+            return;
+          }
+          if (!href.startsWith("data:") && !href.startsWith("blob:")) {
+            downloadBlob(href, ext, "application/xml");
+            return;
+          }
+          triggerDownload(href, filename);
+        } catch (e) {
+          console.error("Export failed:", e);
+        }
+      }
+
+      exportButtons.png.addEventListener("click", () => requestExport("png"));
+      exportButtons.svg.addEventListener("click", () => requestExport("svg"));
+      exportButtons.xml.addEventListener("click", () => requestExport("xml"));
+
+      // ---- "Edit in draw.io": open the full editor with the diagram preloaded
+      async function deflateRawBase64(str) {
+        const input = new TextEncoder().encode(str);
+        const cs = new CompressionStream("deflate-raw");
+        const writer = cs.writable.getWriter();
+        writer.write(input);
+        writer.close();
+        const buf = await new Response(cs.readable).arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let bin = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
+        return btoa(bin);
+      }
+
+      async function updateEditLink() {
+        // Default to the blank editor; upgrade to a preloaded URL if we can.
+        editEl.href = "https://app.diagrams.net/";
+        if (!currentXml) return;
+        try {
+          if (typeof CompressionStream === "function") {
+            const data = await deflateRawBase64(currentXml);
+            editEl.href = "https://app.diagrams.net/#R" + encodeURIComponent(data);
+          }
+        } catch (e) {
+          /* keep blank-editor fallback */
+        }
+      }
+
+      // Ask the host to open the link (the sandbox lacks `allow-popups`, so
+      // `target=_blank` dies silently); the anchor handles hosts without
+      // open-link support.
+      editEl.addEventListener("click", () => {
+        try {
+          window.parent.postMessage(
+            { jsonrpc: "2.0", id: app.messageId, method: "ui/open-link", params: { url: editEl.href } },
+            "*",
+          );
+        } catch (e) {
+          /* anchor default handles it */
+        }
+      });
+
+      // -----------------------------------------------------------------
+      // Boot
+      // -----------------------------------------------------------------
+      function boot() {
+        const embedded = getEmbeddedSchema();
+
+        app.onrenderdata = (data) => applyRenderData(data);
+        app.connect();
+
+        // Always open an editable canvas right away — blank if the host
+        // provided no diagram, pre-loaded otherwise.
+        applyRenderData(embedded || {});
+
+        app.processQueue();
+      }
+
+      boot();
+    </script>
+  </body>
+</html>
