@@ -7,6 +7,7 @@ servers, grouped by the problem they solve.
 |---|---|---|
 | **Authentication** | [`authentication/okta-dcr/`](authentication/okta-dcr/) | OAuth 2.0 delegating to **Okta**, with Dynamic Client Registration. |
 | **Authentication** | [`authentication/entra-dcr/`](authentication/entra-dcr/) | OAuth 2.0 delegating to **Microsoft Entra ID**, with Dynamic Client Registration. |
+| **Authentication** | [`authentication/keycloak-dcr/`](authentication/keycloak-dcr/) | OAuth 2.0 delegating to **Keycloak**, with Dynamic Client Registration. |
 | **Apps & UI** | [`apps/google-maps/`](apps/google-maps/) | Rendering an interactive, embedded UI (a live Google Map) inside the MCP client. |
 | **Apps & UI** | [`apps/drawio/`](apps/drawio/) | Embedding an editable draw.io diagram editor inside the MCP client — no auth, fully client-side. |
 | **Apps & UI** | [`apps/servicenow/`](apps/servicenow/) | An interactive record-creation form backed by ServiceNow, with OAuth + Dynamic Client Registration. |

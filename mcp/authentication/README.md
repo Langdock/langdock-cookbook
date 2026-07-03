@@ -1,12 +1,13 @@
 # MCP Authentication with Dynamic Client Registration
 
-Two recipes showing how to put OAuth 2.0 in front of an MCP server, delegating
+Three recipes showing how to put OAuth 2.0 in front of an MCP server, delegating
 user authentication to an identity provider:
 
 | Identity provider | Recipe |
 |---|---|
 | Okta | [`okta-dcr/`](okta-dcr/) |
 | Microsoft Entra ID (Azure AD) | [`entra-dcr/`](entra-dcr/) |
+| Keycloak | [`keycloak-dcr/`](keycloak-dcr/) |
 
 Both follow the **same pattern** — only the provider-specific configuration
 differs. Read this page once, then pick the recipe for your IdP.
@@ -47,3 +48,5 @@ These recipes implement the registration endpoint so the MCP client can:
 - **[`okta-dcr/`](okta-dcr/)** — delegating to Okta.
 - **[`entra-dcr/`](entra-dcr/)** — delegating to Microsoft Entra ID (Azure AD),
   forwarding the Entra token to call Microsoft Graph.
+- **[`keycloak-dcr/`](keycloak-dcr/)** — delegating to Keycloak, forwarding the
+  Keycloak token to call its userinfo endpoint.
