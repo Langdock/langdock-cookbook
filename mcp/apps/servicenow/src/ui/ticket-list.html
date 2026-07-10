@@ -16,6 +16,8 @@
       .group { margin: 18px 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; }
       .ticket { width: 100%; text-align: left; display: block; padding: 14px; margin: 0 0 10px; border: 1px solid var(--border); border-left-width: 4px; border-radius: 8px; background: #fff; color: inherit; cursor: pointer; font: inherit; text-decoration: none; }
       .ticket:hover, .ticket:focus-visible { border-color: #a1a1aa; outline: none; }
+      .ticket[aria-busy="true"] { position: relative; opacity: .65; pointer-events: none; }
+      .ticket[aria-busy="true"]::after { content: "Loading ticket…"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: rgba(255, 255, 255, .82); color: var(--fg); font-size: 13px; font-weight: 600; }
       .ticket.level-critical { border-left-color: var(--red); }
       .ticket.level-high { border-left-color: var(--orange); }
       .ticket.level-medium { border-left-color: var(--amber); }
@@ -82,6 +84,7 @@
       }
 
       async function openTicket(card) {
+        if (card.getAttribute("aria-busy") === "true") return;
         const errorEl = document.getElementById("error");
         card.setAttribute("aria-busy", "true");
         try {

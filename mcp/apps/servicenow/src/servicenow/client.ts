@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { getInstanceUrl } from "../utils/getInstanceUrl.js";
 
 export async function submitForm(
@@ -157,6 +159,25 @@ export interface TicketAttachment {
   createdBy: string;
 }
 
+const FORM_SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000;
+const formSchemaCache = new Map<
+  string,
+  { expiresAt: number; schema: FormSchema }
+>();
+
+function formSchemaCacheKey(
+  instanceUrl: string,
+  table: string,
+  accessToken: string,
+  extraHeaders: Record<string, string>,
+): string {
+  const identity = createHash("sha256")
+    .update(accessToken)
+    .update(JSON.stringify(Object.entries(extraHeaders).sort()))
+    .digest("hex");
+  return `${instanceUrl}|${table}|${identity}`;
+}
+
 function classifyInputType(internalType: string): FormField["inputType"] {
   const t = (internalType || "").toLowerCase();
   if (t === "boolean") return "boolean";
@@ -239,6 +260,15 @@ export async function getFormFields(
   extraHeaders: Record<string, string> = {},
 ): Promise<FormSchema> {
   const instanceUrl = getInstanceUrl();
+  const cacheKey = formSchemaCacheKey(
+    instanceUrl,
+    table,
+    accessToken,
+    extraHeaders,
+  );
+  const cached = formSchemaCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.schema;
+  if (cached) formSchemaCache.delete(cacheKey);
   const headers = {
     ...extraHeaders,
     Authorization: `Bearer ${accessToken}`,
@@ -388,12 +418,21 @@ export async function getFormFields(
   // Sort alphabetically by label
   fields.sort((a, b) => a.label.localeCompare(b.label));
 
-  return {
+  const schema = {
     table,
     fields,
     hierarchy: tableHierarchy,
     isTaskTable: tableHierarchy.includes("task"),
   };
+  if (formSchemaCache.size >= 200) {
+    const oldestKey = formSchemaCache.keys().next().value;
+    if (oldestKey) formSchemaCache.delete(oldestKey);
+  }
+  formSchemaCache.set(cacheKey, {
+    expiresAt: Date.now() + FORM_SCHEMA_CACHE_TTL_MS,
+    schema,
+  });
+  return schema;
 }
 
 // ---------------------------------------------------------------------------

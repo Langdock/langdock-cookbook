@@ -976,24 +976,58 @@ function createMcpServer(
     },
     async ({ table, id }) => {
       try {
-        const initialRecord = await getRecord(
-          table || "task",
-          id,
-          token,
-          customHeaders,
-        );
-        const resolvedTable =
-          table || initialRecord.values.sys_class_name?.value || "task";
-        const [schema, record] = await Promise.all([
-          getFormFields(resolvedTable, token, customHeaders),
-          resolvedTable === (table || "task")
-            ? Promise.resolve(initialRecord)
-            : getRecord(resolvedTable, initialRecord.sysId, token, customHeaders),
-        ]);
-        const [activity, attachments] = await Promise.all([
-          getActivity(resolvedTable, record.sysId, token, customHeaders),
-          getAttachments(resolvedTable, record.sysId, token, customHeaders),
-        ]);
+        let resolvedTable: string;
+        let schema: Awaited<ReturnType<typeof getFormFields>>;
+        let record: Awaited<ReturnType<typeof getRecord>>;
+        let activity: Awaited<ReturnType<typeof getActivity>>;
+        let attachments: Awaited<ReturnType<typeof getAttachments>>;
+        const idIsSysId = /^[0-9a-f]{32}$/i.test(id.trim());
+
+        if (table && idIsSysId) {
+          // Discovery cards already provide the concrete table and sys_id, so
+          // all ticket-panel requests can run concurrently.
+          resolvedTable = table;
+          [schema, record, activity, attachments] = await Promise.all([
+            getFormFields(table, token, customHeaders),
+            getRecord(table, id, token, customHeaders),
+            getActivity(table, id, token, customHeaders),
+            getAttachments(table, id, token, customHeaders),
+          ]);
+        } else if (table) {
+          resolvedTable = table;
+          [schema, record] = await Promise.all([
+            getFormFields(table, token, customHeaders),
+            getRecord(table, id, token, customHeaders),
+          ]);
+          [activity, attachments] = await Promise.all([
+            getActivity(table, record.sysId, token, customHeaders),
+            getAttachments(table, record.sysId, token, customHeaders),
+          ]);
+        } else {
+          const initialRecord = await getRecord(
+            "task",
+            id,
+            token,
+            customHeaders,
+          );
+          resolvedTable =
+            initialRecord.values.sys_class_name?.value || "task";
+          [schema, record] = await Promise.all([
+            getFormFields(resolvedTable, token, customHeaders),
+            resolvedTable === "task"
+              ? Promise.resolve(initialRecord)
+              : getRecord(
+                  resolvedTable,
+                  initialRecord.sysId,
+                  token,
+                  customHeaders,
+                ),
+          ]);
+          [activity, attachments] = await Promise.all([
+            getActivity(resolvedTable, record.sysId, token, customHeaders),
+            getAttachments(resolvedTable, record.sysId, token, customHeaders),
+          ]);
+        }
 
         // Flatten record values for form seeding (raw values + display labels).
         const values: Record<string, string> = {};
