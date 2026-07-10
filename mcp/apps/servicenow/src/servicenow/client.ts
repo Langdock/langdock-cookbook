@@ -101,6 +101,7 @@ export interface TicketFilters {
 export interface TicketSummary {
   table: string;
   sysId: string;
+  recordUrl: string;
   number: string;
   shortDescription: string;
   state: string;
@@ -125,6 +126,15 @@ export interface TicketSummary {
 export interface ActivityEntry {
   field: "comments" | "work_notes";
   value: string;
+  createdOn: string;
+  createdBy: string;
+}
+
+export interface TicketAttachment {
+  sysId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
   createdOn: string;
   createdBy: string;
 }
@@ -519,14 +529,22 @@ export function buildTicketQuery(filters: TicketFilters = {}): string {
   return conditions.join("^");
 }
 
-function toTicketSummary(raw: Record<string, unknown>): TicketSummary {
+function toTicketSummary(
+  raw: Record<string, unknown>,
+  instanceUrl: string,
+): TicketSummary {
   const values: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
     values[key] = normalizeValue(value).display;
   }
+  const table = values.sys_class_name || "task";
+  const sysId = normalizeValue(raw.sys_id).value;
   return {
-    table: values.sys_class_name || "task",
-    sysId: normalizeValue(raw.sys_id).value,
+    table,
+    sysId,
+    recordUrl: `${instanceUrl}/nav_to.do?uri=${encodeURIComponent(
+      `${table}.do?sys_id=${sysId}`,
+    )}`,
     number: values.number || "",
     shortDescription: values.short_description || "",
     state: values.state || "",
@@ -609,25 +627,35 @@ async function getCurrentUserSysId(
   headers: Record<string, string>,
   instanceUrl: string,
 ): Promise<string> {
-  const response = await fetch(
+  const params = new URLSearchParams({
+    sysparm_fields: "sys_id",
+    sysparm_display_value: "false",
+  });
+  const endpoints = [
+    `${instanceUrl}/api/now/table/sys_user/me?${params}`,
     `${instanceUrl}/api/now/ui/user/current_user`,
-    { method: "GET", headers },
+  ];
+  for (const url of endpoints) {
+    const response = await fetch(url, { method: "GET", headers });
+    if (!response.ok) continue;
+    const data = await response.json();
+    const result = Array.isArray(data.result) ? data.result[0] : data.result;
+    const candidates = [
+      result?.sys_id,
+      result?.user_id,
+      result?.user?.sys_id,
+      result?.user?.user_id,
+      result?.user?.value,
+      result?.value,
+    ];
+    const sysId = candidates
+      .map((candidate) => normalizeValue(candidate).value)
+      .find(looksLikeSysId);
+    if (sysId) return sysId;
+  }
+  throw new Error(
+    "Could not identify the authenticated ServiceNow user for the “my tickets” filter",
   );
-  if (!response.ok) {
-    throw new Error(
-      "Could not identify the authenticated ServiceNow user for the “my tickets” filter",
-    );
-  }
-  const data = await response.json();
-  const result = data.result || data;
-  const sysId =
-    result.sys_id || result.user?.sys_id || result.user?.value || result.value;
-  if (!sysId || !looksLikeSysId(String(sysId))) {
-    throw new Error(
-      "ServiceNow did not return a user sys_id for the “my tickets” filter",
-    );
-  }
-  return String(sysId);
 }
 
 /**
@@ -642,12 +670,38 @@ export async function discoverTickets(
 ): Promise<{ tickets: TicketSummary[]; query: string }> {
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
+  const assignedToValues =
+    filters.assignedTo == null
+      ? []
+      : Array.isArray(filters.assignedTo)
+        ? filters.assignedTo
+        : [filters.assignedTo];
+  const isSelfReference = (value: string): boolean =>
+    /^(me|myself|current user)$/i.test(value.trim());
+  const selfReferences = assignedToValues.filter(isSelfReference);
+  const namedAssignees = assignedToValues.filter(
+    (value) => !isSelfReference(value),
+  );
+  if (selfReferences.length > 0 && namedAssignees.length > 0) {
+    throw new Error(
+      "The “me” assignee cannot be combined with named assignees in one search",
+    );
+  }
+  const queryFilters: TicketFilters = {
+    ...filters,
+    assignedTo:
+      namedAssignees.length === 0
+        ? undefined
+        : Array.isArray(filters.assignedTo)
+          ? namedAssignees
+          : namedAssignees[0],
+  };
   const resolvedFilters = await resolveChoiceFilterLabels(
-    filters,
+    queryFilters,
     headers,
     instanceUrl,
   );
-  if (filters.assignedToMe) {
+  if (filters.assignedToMe || selfReferences.length > 0) {
     const currentUserSysId = await getCurrentUserSysId(headers, instanceUrl);
     resolvedFilters.additionalFilters = {
       ...resolvedFilters.additionalFilters,
@@ -679,7 +733,7 @@ export async function discoverTickets(
   const data = await response.json();
   return {
     tickets: (data.result || []).map((row: Record<string, unknown>) =>
-      toTicketSummary(row),
+      toTicketSummary(row, instanceUrl),
     ),
     query,
   };
@@ -790,4 +844,146 @@ export async function getActivity(
       createdBy: String(r.sys_created_by ?? ""),
     }),
   );
+}
+
+/** List file attachments associated with a ticket. */
+export async function getAttachments(
+  table: string,
+  sysId: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<TicketAttachment[]> {
+  const instanceUrl = getInstanceUrl();
+  const params = new URLSearchParams({
+    sysparm_query: `table_name=${escapeQueryValue(table)}^table_sys_id=${escapeQueryValue(sysId)}^ORDERBYDESCsys_created_on`,
+    sysparm_fields:
+      "sys_id,file_name,content_type,size_bytes,sys_created_on,sys_created_by",
+    sysparm_display_value: "true",
+    sysparm_limit: "100",
+  });
+  const response = await fetch(
+    `${instanceUrl}/api/now/table/sys_attachment?${params}`,
+    { method: "GET", headers: buildHeaders(accessToken, extraHeaders) },
+  );
+  if (!response.ok) return [];
+  const data = await response.json();
+  return (data.result || []).map(
+    (row: Record<string, unknown>): TicketAttachment => ({
+      sysId: String(row.sys_id ?? ""),
+      fileName: String(row.file_name ?? "attachment"),
+      contentType: String(row.content_type ?? "application/octet-stream"),
+      sizeBytes: Number(row.size_bytes) || 0,
+      createdOn: String(row.sys_created_on ?? ""),
+      createdBy: String(row.sys_created_by ?? ""),
+    }),
+  );
+}
+
+/** Upload a base64-encoded file to a ticket and return its metadata. */
+export async function uploadAttachment(
+  table: string,
+  sysId: string,
+  fileName: string,
+  contentType: string,
+  dataBase64: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<TicketAttachment> {
+  const fileData = Buffer.from(dataBase64, "base64");
+  if (fileData.length === 0) throw new Error("The attachment is empty");
+  if (fileData.length > 8 * 1024 * 1024) {
+    throw new Error("Attachments are limited to 8 MB");
+  }
+  const instanceUrl = getInstanceUrl();
+  const params = new URLSearchParams({
+    table_name: table,
+    table_sys_id: sysId,
+    file_name: fileName,
+  });
+  const response = await fetch(
+    `${instanceUrl}/api/now/attachment/file?${params}`,
+    {
+      method: "POST",
+      headers: {
+        ...extraHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Content-Type": contentType || "application/octet-stream",
+      },
+      body: fileData,
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Attachment upload failed (${response.status}): ${errorText}`);
+  }
+  const data = await response.json();
+  const row = data.result || {};
+  return {
+    sysId: String(row.sys_id ?? ""),
+    fileName: String(row.file_name ?? fileName),
+    contentType: String(row.content_type ?? contentType),
+    sizeBytes: Number(row.size_bytes) || fileData.length,
+    createdOn: String(row.sys_created_on ?? ""),
+    createdBy: String(row.sys_created_by ?? ""),
+  };
+}
+
+/** Download an attachment as base64 so an MCP App can save it locally. */
+export async function downloadAttachment(
+  sysId: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ dataBase64: string; contentType: string }> {
+  const instanceUrl = getInstanceUrl();
+  const response = await fetch(
+    `${instanceUrl}/api/now/attachment/${encodeURIComponent(sysId)}/file`,
+    {
+      method: "GET",
+      headers: {
+        ...extraHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "*/*",
+      },
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Attachment download failed (${response.status}): ${errorText}`,
+    );
+  }
+  const data = Buffer.from(await response.arrayBuffer());
+  if (data.length > 8 * 1024 * 1024) {
+    throw new Error("Attachments larger than 8 MB cannot be downloaded in-chat");
+  }
+  return {
+    dataBase64: data.toString("base64"),
+    contentType:
+      response.headers.get("content-type") || "application/octet-stream",
+  };
+}
+
+/** Delete an attachment from ServiceNow. */
+export async function deleteAttachment(
+  sysId: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<void> {
+  const instanceUrl = getInstanceUrl();
+  const response = await fetch(
+    `${instanceUrl}/api/now/attachment/${encodeURIComponent(sysId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        ...extraHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Attachment deletion failed (${response.status}): ${errorText}`);
+  }
 }

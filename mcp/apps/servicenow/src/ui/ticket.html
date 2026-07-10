@@ -264,6 +264,57 @@
         word-break: break-word;
       }
 
+      /* Attachments */
+      .attachments {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .attachment {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+      }
+      .attachment-info {
+        min-width: 0;
+        flex: 1;
+      }
+      .attachment-name {
+        font-size: 13px;
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .attachment-meta {
+        color: var(--fg-muted);
+        font-size: 11px;
+      }
+      .attachment-action {
+        border: 0;
+        background: transparent;
+        color: var(--fg-muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+      }
+      .attachment-action:hover { color: var(--fg); }
+      .upload-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .upload-row input[type="file"] {
+        min-width: 0;
+        flex: 1;
+        font: inherit;
+        font-size: 12px;
+      }
+
       /* Composer */
       .composer {
         margin-top: 12px;
@@ -688,6 +739,37 @@
         </div>`;
       }
 
+      function formatBytes(bytes) {
+        const size = Number(bytes) || 0;
+        if (size < 1024) return `${size} B`;
+        if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+        return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+      }
+
+      function attachmentsHtml() {
+        const attachments = ticket.attachments || [];
+        const list = attachments.length
+          ? `<div class="attachments">${attachments
+              .map(
+                (attachment) => `
+                  <div class="attachment">
+                    <div class="attachment-info">
+                      <div class="attachment-name" title="${escapeHtml(attachment.fileName)}">${escapeHtml(attachment.fileName)}</div>
+                      <div class="attachment-meta">${escapeHtml(formatBytes(attachment.sizeBytes))}${attachment.createdBy ? ` · ${escapeHtml(attachment.createdBy)}` : ""}</div>
+                    </div>
+                    <button type="button" class="attachment-action download-attachment" data-id="${escapeHtml(attachment.sysId)}" data-name="${escapeHtml(attachment.fileName)}">Download</button>
+                    <button type="button" class="attachment-action delete-attachment" data-id="${escapeHtml(attachment.sysId)}" data-name="${escapeHtml(attachment.fileName)}">Delete</button>
+                  </div>`,
+              )
+              .join("")}</div>`
+          : `<div class="activity-empty">No attachments yet.</div>`;
+        return `${list}
+          <div class="upload-row">
+            <input type="file" id="attachment-file">
+            <button type="button" class="btn btn-primary" id="upload-attachment-btn">Upload</button>
+          </div>`;
+      }
+
       function editableFields() {
         return ticket.fields.filter(
           (f) => !f.readOnly && !HIDDEN_FIELDS.has(f.name),
@@ -749,6 +831,11 @@
           </form>
 
           <div class="section">
+            <div class="section-title">Attachments</div>
+            ${attachmentsHtml()}
+          </div>
+
+          <div class="section">
             <div class="section-title">Activity</div>
             <div id="activity-slot">${activityHtml()}</div>
             <div class="composer">
@@ -803,6 +890,19 @@
         document
           .getElementById("add-entry-btn")
           .addEventListener("click", handleAddEntry);
+        document
+          .getElementById("upload-attachment-btn")
+          .addEventListener("click", handleUploadAttachment);
+        document.querySelectorAll(".download-attachment").forEach((button) =>
+          button.addEventListener("click", () =>
+            handleDownloadAttachment(button),
+          ),
+        );
+        document.querySelectorAll(".delete-attachment").forEach((button) =>
+          button.addEventListener("click", () =>
+            handleDeleteAttachment(button),
+          ),
+        );
 
         const toggle = document.getElementById("kind-toggle");
         toggle.addEventListener("click", (e) => {
@@ -914,6 +1014,113 @@
         }
       }
 
+      function bytesToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(offset, offset + chunkSize),
+          );
+        }
+        return btoa(binary);
+      }
+
+      async function handleUploadAttachment() {
+        const input = document.getElementById("attachment-file");
+        const file = input.files?.[0];
+        if (!file) {
+          showBanner("error", "Choose a file to upload.");
+          return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          showBanner("error", "Attachments are limited to 8 MB.");
+          return;
+        }
+        const button = document.getElementById("upload-attachment-btn");
+        button.disabled = true;
+        button.textContent = "Uploading...";
+        try {
+          const dataBase64 = bytesToBase64(await file.arrayBuffer());
+          const result = await app.callServerTool({
+            name: "upload_attachment",
+            arguments: {
+              table: ticket.table,
+              sys_id: ticket.sysId,
+              file_name: file.name,
+              content_type: file.type || "application/octet-stream",
+              data_base64: dataBase64,
+            },
+          });
+          const payload = parsePayload(result);
+          ticket.attachments = payload?.attachments || ticket.attachments;
+          render();
+          showBanner("success", `${file.name} uploaded.`);
+        } catch (err) {
+          button.disabled = false;
+          button.textContent = "Upload";
+          showBanner("error", err.message || "Failed to upload attachment.");
+        }
+      }
+
+      async function handleDownloadAttachment(button) {
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = "Downloading...";
+        try {
+          const result = await app.callServerTool({
+            name: "download_attachment",
+            arguments: { sys_id: button.dataset.id },
+          });
+          const payload = parsePayload(result);
+          const binary = atob(payload.dataBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const url = URL.createObjectURL(
+            new Blob([bytes], {
+              type: payload.contentType || "application/octet-stream",
+            }),
+          );
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = button.dataset.name || "attachment";
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err) {
+          showBanner("error", err.message || "Failed to download attachment.");
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      }
+
+      async function handleDeleteAttachment(button) {
+        const fileName = button.dataset.name || "this attachment";
+        if (!window.confirm(`Delete ${fileName}? This cannot be undone.`)) return;
+        button.disabled = true;
+        button.textContent = "Deleting...";
+        try {
+          const result = await app.callServerTool({
+            name: "delete_attachment",
+            arguments: {
+              table: ticket.table,
+              table_sys_id: ticket.sysId,
+              sys_id: button.dataset.id,
+            },
+          });
+          const payload = parsePayload(result);
+          ticket.attachments = payload?.attachments || [];
+          render();
+          showBanner("success", `${fileName} deleted.`);
+        } catch (err) {
+          button.disabled = false;
+          button.textContent = "Delete";
+          showBanner("error", err.message || "Failed to delete attachment.");
+        }
+      }
+
       // ---- Boot ----
       function boot(data) {
         if (!data || !data.fields) return;
@@ -926,6 +1133,7 @@
           values: { ...(data.values || {}) },
           displays: { ...(data.displays || {}) },
           activity: data.activity || [],
+          attachments: data.attachments || [],
           recordUrl: data.recordUrl || "",
         };
         dirty.clear();

@@ -20,11 +20,16 @@ import {
   storeAuthorizationSession,
 } from "./oauth/provider.js";
 import {
+  deleteAttachment,
   discoverTickets,
+  downloadAttachment,
   getActivity,
+  getAttachments,
   getFormFields,
   getRecord,
   submitForm,
+  type TicketSummary,
+  uploadAttachment,
   updateRecord,
 } from "./servicenow/client.js";
 import { encodeForDataAttr } from "./utils/encodeForDataAttr.js";
@@ -45,7 +50,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 const baseUrl = getBaseUrl();
@@ -184,6 +189,27 @@ app.get("/health", (_req, res) => res.json({ status: "ok" }));
 // ---------------------------------------------------------------------------
 // MCP Server Factory
 // ---------------------------------------------------------------------------
+
+function formatTicketResults(tickets: TicketSummary[]): string {
+  if (tickets.length === 0) return "No ServiceNow tickets matched the filters.";
+  const escapeMarkdown = (value: string): string =>
+    value.replace(/[\\[\]]/g, "\\$&").replace(/\s+/g, " ").trim();
+  const rows = tickets.map((ticket) => {
+    const label = escapeMarkdown(
+      [ticket.number, ticket.shortDescription].filter(Boolean).join(" — ") ||
+        "ServiceNow ticket",
+    );
+    const details = [
+      ticket.state && `State: ${ticket.state}`,
+      ticket.priority && `Priority: ${ticket.priority}`,
+      ticket.severity && `Severity: ${ticket.severity}`,
+      ticket.impact && `Impact: ${ticket.impact}`,
+      ticket.assignedTo && `Assigned to: ${ticket.assignedTo}`,
+    ].filter(Boolean);
+    return `- [${label}](${ticket.recordUrl})${details.length ? ` — ${details.join("; ")}` : ""}`;
+  });
+  return `Found ${tickets.length} ServiceNow ticket${tickets.length === 1 ? "" : "s"}:\n\n${rows.join("\n")}`;
+}
 
 function createMcpServer(
   token: string,
@@ -359,7 +385,9 @@ function createMcpServer(
           .describe("Caller display name or names"),
         assigned_to: filterValue
           .optional()
-          .describe("Assignee display name or names"),
+          .describe(
+            'Assignee display name or names. Use "me" for the authenticated ServiceNow user.',
+          ),
         assigned_to_me: z
           .boolean()
           .optional()
@@ -469,7 +497,7 @@ function createMcpServer(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ tickets: result.tickets }, null, 2),
+              text: formatTicketResults(result.tickets),
             },
             {
               type: "resource" as const,
@@ -657,6 +685,167 @@ function createMcpServer(
     },
   );
 
+  server.registerTool(
+    "list_attachments",
+    {
+      title: "List Ticket Attachments",
+      description: "List files attached to a ServiceNow ticket.",
+      inputSchema: {
+        table: z.string().describe("The ticket's concrete ServiceNow table"),
+        sys_id: z.string().describe("The ticket sys_id"),
+      },
+    },
+    async ({ table, sys_id }) => {
+      try {
+        const attachments = await getAttachments(
+          table,
+          sys_id,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ attachments }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "upload_attachment",
+    {
+      title: "Upload Ticket Attachment",
+      description:
+        "Attach a file of up to 8 MB to a ServiceNow ticket. The ticket panel calls this tool with base64 file data.",
+      inputSchema: {
+        table: z.string().describe("The ticket's concrete ServiceNow table"),
+        sys_id: z.string().describe("The ticket sys_id"),
+        file_name: z.string().min(1).max(255).describe("Original file name"),
+        content_type: z
+          .string()
+          .optional()
+          .describe("File MIME type, if known"),
+        data_base64: z
+          .string()
+          .min(1)
+          .max(12_000_000)
+          .describe("Base64-encoded file bytes"),
+      },
+    },
+    async ({ table, sys_id, file_name, content_type, data_base64 }) => {
+      try {
+        await uploadAttachment(
+          table,
+          sys_id,
+          file_name,
+          content_type || "application/octet-stream",
+          data_base64,
+          token,
+          customHeaders,
+        );
+        const attachments = await getAttachments(
+          table,
+          sys_id,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ attachments }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "download_attachment",
+    {
+      title: "Download Ticket Attachment",
+      description:
+        "Download a ServiceNow attachment of up to 8 MB. Returns base64 file data.",
+      inputSchema: {
+        sys_id: z.string().describe("The attachment sys_id"),
+      },
+    },
+    async ({ sys_id }) => {
+      try {
+        const attachment = await downloadAttachment(
+          sys_id,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(attachment),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_attachment",
+    {
+      title: "Delete Ticket Attachment",
+      description: "Permanently delete a file attached to a ServiceNow ticket.",
+      inputSchema: {
+        table: z.string().describe("The ticket's concrete ServiceNow table"),
+        table_sys_id: z.string().describe("The ticket sys_id"),
+        sys_id: z.string().describe("The attachment sys_id"),
+      },
+    },
+    async ({ table, table_sys_id, sys_id }) => {
+      try {
+        await deleteAttachment(sys_id, token, customHeaders);
+        const attachments = await getAttachments(
+          table,
+          table_sys_id,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ attachments }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
   // Tool: Render interactive ticket panel for an existing record
   registerAppTool(
     server,
@@ -664,7 +853,7 @@ function createMcpServer(
     {
       title: "Render Ticket",
       description:
-        "Open an existing ServiceNow ticket as an interactive in-chat panel. A table is optional: when omitted, the server discovers the ticket's concrete task type automatically. Users can edit fields, change state, and add comments or work notes directly in the frame.",
+        "Open an existing ServiceNow ticket as an interactive in-chat panel. A table is optional: when omitted, the server discovers the ticket's concrete task type automatically. Users can edit fields, change state, work with attachments, and add comments or work notes directly in the frame.",
       inputSchema: {
         table: z
           .string()
@@ -694,12 +883,10 @@ function createMcpServer(
             ? Promise.resolve(initialRecord)
             : getRecord(resolvedTable, initialRecord.sysId, token, customHeaders),
         ]);
-        const activity = await getActivity(
-          resolvedTable,
-          record.sysId,
-          token,
-          customHeaders,
-        );
+        const [activity, attachments] = await Promise.all([
+          getActivity(resolvedTable, record.sysId, token, customHeaders),
+          getAttachments(resolvedTable, record.sysId, token, customHeaders),
+        ]);
 
         // Flatten record values for form seeding (raw values + display labels).
         const values: Record<string, string> = {};
@@ -722,6 +909,7 @@ function createMcpServer(
           values,
           displays,
           activity,
+          attachments,
           recordUrl,
         };
 

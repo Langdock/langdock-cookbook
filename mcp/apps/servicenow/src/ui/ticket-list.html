@@ -11,10 +11,11 @@
       .container { max-width: 760px; margin: 0 auto; }
       h1 { margin: 0; font-size: 18px; }
       .summary { color: var(--muted); margin: 4px 0 16px; }
-      .ticket { width: 100%; text-align: left; display: block; padding: 14px; margin: 0 0 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: inherit; cursor: pointer; font: inherit; }
+      .ticket { width: 100%; text-align: left; display: block; padding: 14px; margin: 0 0 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: inherit; cursor: pointer; font: inherit; text-decoration: none; }
       .ticket:hover, .ticket:focus-visible { border-color: #a1a1aa; outline: none; }
       .top, .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
       .number { font-weight: 650; }
+      .open-label { margin-left: auto; color: var(--muted); font-size: 12px; }
       .type, .state, .tag { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; color: #3f3f46; font-size: 12px; background: var(--surface); }
       .description { margin: 6px 0; font-size: 15px; font-weight: 500; }
       .meta { color: var(--muted); font-size: 12px; }
@@ -28,8 +29,6 @@
     </div>
     <script type="module">
       const content = document.getElementById("content");
-      let messageId = 0;
-      const pending = new Map();
 
       function escapeHtml(value) {
         return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -48,39 +47,17 @@
           content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">No tickets matched these filters.</p><div class="empty">Try broadening the state, assignment, or date filters.</div>`;
           return;
         }
-        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} — select one to open it.</p>${tickets.map((ticket) => {
+        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} — select one to open it in ServiceNow.</p>${tickets.map((ticket) => {
           const tags = [ticket.priority && `Priority ${ticket.priority}`, ticket.impact && `Impact ${ticket.impact}`, ticket.urgency && `Urgency ${ticket.urgency}`, ticket.severity && `Severity ${ticket.severity}`].filter(Boolean);
           const meta = [ticket.assignedTo && `Assigned to ${ticket.assignedTo}`, ticket.assignmentGroup && ticket.assignmentGroup, ticket.openedAt && `Opened ${ticket.openedAt}`, ticket.closedAt && `Closed ${ticket.closedAt}`].filter(Boolean);
-          return `<button class="ticket" data-table="${escapeHtml(ticket.table)}" data-id="${escapeHtml(ticket.sysId)}"><div class="top"><span class="number">${escapeHtml(ticket.number || "Ticket")}</span><span class="type">${escapeHtml(ticket.table)}</span>${ticket.state ? `<span class="state">${escapeHtml(ticket.state)}</span>` : ""}</div><div class="description">${escapeHtml(ticket.shortDescription || "No short description")}</div><div class="meta">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${meta.map(escapeHtml).join(" · ")}</div></button>`;
+          return `<a class="ticket" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener"><div class="top"><span class="number">${escapeHtml(ticket.number || "Ticket")}</span><span class="type">${escapeHtml(ticket.table)}</span>${ticket.state ? `<span class="state">${escapeHtml(ticket.state)}</span>` : ""}<span class="open-label">Open ↗</span></div><div class="description">${escapeHtml(ticket.shortDescription || "No short description")}</div><div class="meta">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${meta.map(escapeHtml).join(" · ")}</div></a>`;
         }).join("")}<div id="error" class="error" role="alert"></div>`;
-        content.querySelectorAll(".ticket").forEach((button) => button.addEventListener("click", async () => {
-          button.disabled = true;
-          try {
-            await callTool("render_ticket", { table: button.dataset.table, id: button.dataset.id });
-          } catch (error) {
-            document.getElementById("error").textContent = error.message || "Could not open this ticket.";
-            button.disabled = false;
-          }
-        }));
-      }
-
-      function callTool(name, args) {
-        const id = ++messageId;
-        return new Promise((resolve, reject) => {
-          pending.set(id, { resolve, reject });
-          window.parent.postMessage({ jsonrpc: "2.0", method: "tools/call", id, params: { name, arguments: args } }, "*");
-        });
       }
 
       window.addEventListener("message", (event) => {
         const message = event.data || {};
         const data = message.params?._meta?.["mcpui.dev/ui-initial-render-data"] || message.data || message.renderData;
         if (data?.tickets) render(data);
-        if (message.id && pending.has(message.id)) {
-          const request = pending.get(message.id);
-          pending.delete(message.id);
-          message.error ? request.reject(new Error(message.error.message)) : request.resolve(message.result);
-        }
       });
       const embedded = dataFromPage();
       if (embedded) render(embedded);
