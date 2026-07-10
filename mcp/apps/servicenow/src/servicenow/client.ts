@@ -435,6 +435,73 @@ export async function getFormFields(
   return schema;
 }
 
+const TICKET_PANEL_FIELDS = new Set([
+  "number",
+  "short_description",
+  "description",
+  "state",
+  "priority",
+  "impact",
+  "urgency",
+  "severity",
+  "category",
+  "subcategory",
+  "caller_id",
+  "requested_for",
+  "opened_by",
+  "assigned_to",
+  "assignment_group",
+  "cmdb_ci",
+  "active",
+  "opened_at",
+  "closed_at",
+  "due_date",
+  "expected_start",
+  "work_start",
+  "work_end",
+  "approval",
+  "close_code",
+  "close_notes",
+  "comments",
+  "work_notes",
+]);
+const ticketSchemaInFlight = new Map<string, Promise<FormSchema>>();
+
+/**
+ * Return the useful ticket-editing subset of a table schema. The full schema
+ * remains cached for creation forms, while ticket payloads stay small.
+ */
+export async function getTicketFields(
+  table: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<FormSchema> {
+  const key = formSchemaCacheKey(
+    getInstanceUrl(),
+    table,
+    accessToken,
+    extraHeaders,
+  );
+  const inFlight = ticketSchemaInFlight.get(key);
+  if (inFlight) return inFlight;
+  const promise = getFormFields(table, accessToken, extraHeaders).then(
+    (schema): FormSchema => ({
+      ...schema,
+      fields: schema.fields.filter((field) =>
+        TICKET_PANEL_FIELDS.has(field.name),
+      ),
+    }),
+  );
+  ticketSchemaInFlight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    if (ticketSchemaInFlight.get(key) === promise) {
+      ticketSchemaInFlight.delete(key);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Existing-record helpers (view / update / activity)
 // ---------------------------------------------------------------------------

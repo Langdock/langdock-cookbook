@@ -27,6 +27,7 @@ import {
   getAttachments,
   getFormFields,
   getRecord,
+  getTicketFields,
   submitForm,
   type TicketSummary,
   uploadAttachment,
@@ -533,6 +534,16 @@ function createMcpServer(
             sortDirection: order_direction,
           },
         );
+        // Warm the per-user schema cache while the user scans the list. This
+        // removes the slowest metadata work from most subsequent card clicks.
+        const resultTables = [
+          ...new Set(result.tickets.map((ticket) => ticket.table)),
+        ].slice(0, 5);
+        void Promise.allSettled(
+          resultTables.map((resultTable) =>
+            getTicketFields(resultTable, token, customHeaders),
+          ),
+        );
         const displayFilter = (
           label: string,
           value: string | string[] | undefined,
@@ -977,7 +988,7 @@ function createMcpServer(
     async ({ table, id }) => {
       try {
         let resolvedTable: string;
-        let schema: Awaited<ReturnType<typeof getFormFields>>;
+        let schema: Awaited<ReturnType<typeof getTicketFields>>;
         let record: Awaited<ReturnType<typeof getRecord>>;
         let activity: Awaited<ReturnType<typeof getActivity>>;
         let attachments: Awaited<ReturnType<typeof getAttachments>>;
@@ -988,7 +999,7 @@ function createMcpServer(
           // all ticket-panel requests can run concurrently.
           resolvedTable = table;
           [schema, record, activity, attachments] = await Promise.all([
-            getFormFields(table, token, customHeaders),
+            getTicketFields(table, token, customHeaders),
             getRecord(table, id, token, customHeaders),
             getActivity(table, id, token, customHeaders),
             getAttachments(table, id, token, customHeaders),
@@ -996,7 +1007,7 @@ function createMcpServer(
         } else if (table) {
           resolvedTable = table;
           [schema, record] = await Promise.all([
-            getFormFields(table, token, customHeaders),
+            getTicketFields(table, token, customHeaders),
             getRecord(table, id, token, customHeaders),
           ]);
           [activity, attachments] = await Promise.all([
@@ -1013,7 +1024,7 @@ function createMcpServer(
           resolvedTable =
             initialRecord.values.sys_class_name?.value || "task";
           [schema, record] = await Promise.all([
-            getFormFields(resolvedTable, token, customHeaders),
+            getTicketFields(resolvedTable, token, customHeaders),
             resolvedTable === "task"
               ? Promise.resolve(initialRecord)
               : getRecord(
