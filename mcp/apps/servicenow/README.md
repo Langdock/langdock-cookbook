@@ -12,6 +12,8 @@ The server acts as an OAuth 2.0 proxy with Dynamic Client Registration (DCR): MC
 
 The ticket panel is **generic but ticket-aware**: it works for any table, and for tables that extend `task` (incident, `sc_task`, change, problem, …) it adds ticket-specific niceties — a state badge, an activity/journal stream, and a comment/work-note composer.
 
+> **ServiceNow instance compatibility:** The discovery filters and interactive ticket fields in this recipe are configured for a standard ServiceNow Personal Developer Instance. They can be adapted to any ServiceNow instance, but teams adopting the recipe may need to customize its table and field mappings, choice values, and permissions to match their instance.
+
 ## OAuth Flow
 
 MCP clients authenticate through this server, which delegates to ServiceNow for user authentication:
