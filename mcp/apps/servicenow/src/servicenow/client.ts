@@ -106,10 +106,15 @@ export interface TicketSummary {
   number: string;
   shortDescription: string;
   state: string;
+  stateValue: string;
   priority: string;
+  priorityValue: string;
   impact: string;
+  impactValue: string;
   urgency: string;
+  urgencyValue: string;
   severity: string;
+  severityValue: string;
   category: string;
   caller: string;
   assignedTo: string;
@@ -121,7 +126,18 @@ export interface TicketSummary {
   createdAt: string;
   updatedAt: string;
   active: string;
+  activeValue: string;
 }
+
+export type TicketSortField =
+  | "priority"
+  | "severity"
+  | "impact"
+  | "urgency"
+  | "state"
+  | "opened_at"
+  | "updated_at"
+  | "created_at";
 
 /** One comment or work-note entry from the record's activity stream. */
 export interface ActivityEntry {
@@ -544,6 +560,7 @@ function toTicketSummary(
   }
   const table = normalizeValue(raw.sys_class_name).value || "task";
   const sysId = normalizeValue(raw.sys_id).value;
+  const rawValue = (field: string): string => normalizeValue(raw[field]).value;
   return {
     table,
     tableLabel: values.sys_class_name || table,
@@ -554,10 +571,15 @@ function toTicketSummary(
     number: values.number || "",
     shortDescription: values.short_description || "",
     state: values.state || "",
+    stateValue: rawValue("state"),
     priority: values.priority || "",
+    priorityValue: rawValue("priority"),
     impact: values.impact || "",
+    impactValue: rawValue("impact"),
     urgency: values.urgency || "",
+    urgencyValue: rawValue("urgency"),
     severity: values.severity || "",
+    severityValue: rawValue("severity"),
     category: values.category || "",
     caller: values.caller_id || "",
     assignedTo: values.assigned_to || "",
@@ -569,6 +591,7 @@ function toTicketSummary(
     createdAt: values.sys_created_on || "",
     updatedAt: values.sys_updated_on || "",
     active: values.active || "",
+    activeValue: rawValue("active"),
   };
 }
 
@@ -637,7 +660,11 @@ export async function discoverTickets(
   filters: TicketFilters,
   accessToken: string,
   extraHeaders: Record<string, string> = {},
-  options: { limit?: number; orderBy?: "opened_at" | "updated_at" | "created_at" } = {},
+  options: {
+    limit?: number;
+    sortBy?: TicketSortField;
+    sortDirection?: "asc" | "desc";
+  } = {},
 ): Promise<{ tickets: TicketSummary[]; query: string }> {
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
@@ -674,18 +701,35 @@ export async function discoverTickets(
     instanceUrl,
   );
   const query = buildTicketQuery(resolvedFilters);
-  const orderField =
-    options.orderBy === "opened_at"
-      ? "opened_at"
-      : options.orderBy === "created_at"
-        ? "sys_created_on"
-        : "sys_updated_on";
+  const sortFields: Record<TicketSortField, string> = {
+    priority: "priority",
+    severity: "severity",
+    impact: "impact",
+    urgency: "urgency",
+    state: "state",
+    opened_at: "opened_at",
+    updated_at: "sys_updated_on",
+    created_at: "sys_created_on",
+  };
+  let orderQuery: string;
+  if (options.sortBy) {
+    const direction =
+      options.sortDirection ??
+      (["opened_at", "updated_at", "created_at"].includes(options.sortBy)
+        ? "desc"
+        : "asc");
+    const operator = direction === "desc" ? "ORDERBYDESC" : "ORDERBY";
+    orderQuery = `${operator}${sortFields[options.sortBy]}^ORDERBYsys_id`;
+  } else {
+    // Triage default: most important tickets first, then the oldest opened.
+    orderQuery = "ORDERBYpriority^ORDERBYimpact^ORDERBYopened_at";
+  }
   const params = new URLSearchParams({
     sysparm_fields: TICKET_FIELDS,
     sysparm_display_value: "all",
     sysparm_exclude_reference_link: "true",
     sysparm_limit: String(Math.min(Math.max(options.limit ?? 25, 1), 100)),
-    sysparm_query: [query, `ORDERBYDESC${orderField}`].filter(Boolean).join("^"),
+    sysparm_query: [query, orderQuery].filter(Boolean).join("^"),
   });
   const response = await fetch(`${instanceUrl}/api/now/table/task?${params}`, {
     method: "GET",

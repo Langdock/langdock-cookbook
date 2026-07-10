@@ -5,18 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ServiceNow Tickets</title>
     <style>
-      :root { --fg: #18181b; --muted: #71717a; --border: #e4e4e7; --surface: #fafafa; }
+      :root { --fg: #18181b; --muted: #71717a; --border: #e4e4e7; --surface: #fafafa; --red: #dc2626; --orange: #ea580c; --amber: #d97706; --blue: #2563eb; --green: #15803d; }
       * { box-sizing: border-box; }
       body { margin: 0; padding: 20px; color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       .container { max-width: 760px; margin: 0 auto; }
       h1 { margin: 0; font-size: 18px; }
       .summary { color: var(--muted); margin: 4px 0 16px; }
-      .ticket { width: 100%; text-align: left; display: block; padding: 14px; margin: 0 0 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: inherit; cursor: pointer; font: inherit; text-decoration: none; }
+      .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 16px; }
+      .filter { padding: 3px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+      .group { margin: 18px 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; }
+      .ticket { width: 100%; text-align: left; display: block; padding: 14px; margin: 0 0 10px; border: 1px solid var(--border); border-left-width: 4px; border-radius: 8px; background: #fff; color: inherit; cursor: pointer; font: inherit; text-decoration: none; }
       .ticket:hover, .ticket:focus-visible { border-color: #a1a1aa; outline: none; }
+      .ticket.level-critical { border-left-color: var(--red); }
+      .ticket.level-high { border-left-color: var(--orange); }
+      .ticket.level-medium { border-left-color: var(--amber); }
+      .ticket.level-low { border-left-color: #a1a1aa; }
       .top, .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
       .number { font-weight: 650; }
       .open-label { margin-left: auto; color: var(--muted); font-size: 12px; }
       .type, .state, .tag { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; color: #3f3f46; font-size: 12px; background: var(--surface); }
+      .tag.level-critical { color: #991b1b; border-color: #fecaca; background: #fef2f2; }
+      .tag.level-high { color: #9a3412; border-color: #fed7aa; background: #fff7ed; }
+      .tag.level-medium { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+      .tag.stale { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+      .state.state-open { color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; }
+      .state.state-pending { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+      .state.state-done { color: #166534; border-color: #bbf7d0; background: #f0fdf4; }
       .description { margin: 6px 0; font-size: 15px; font-weight: 500; }
       .meta { color: var(--muted); font-size: 12px; }
       .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; }
@@ -47,6 +61,109 @@
         return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
       }
 
+      function levelClass(rawValue, displayValue) {
+        const text = String(displayValue || "").toLowerCase();
+        if (/critical|highest/.test(text)) return "level-critical";
+        if (/\bhigh\b/.test(text)) return "level-high";
+        if (/medium|moderate/.test(text)) return "level-medium";
+        if (/low|planning/.test(text)) return "level-low";
+        const rank = Number.parseInt(rawValue || displayValue, 10);
+        if (rank === 1) return "level-critical";
+        if (rank === 2) return "level-high";
+        if (rank === 3) return "level-medium";
+        return "level-low";
+      }
+
+      function stateClass(ticket) {
+        const state = String(ticket.state || "").toLowerCase();
+        if (/closed|resolved|complete|done/.test(state)) return "state-done";
+        if (/pending|hold|await|scheduled/.test(state)) return "state-pending";
+        if (/open|new|progress|active/.test(state)) return "state-open";
+        return "";
+      }
+
+      function parseServiceNowDate(value) {
+        if (!value) return "";
+        const normalized = value.includes("T")
+          ? value
+          : `${value.replace(" ", "T")}Z`;
+        const date = new Date(normalized);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      function relativeTime(value) {
+        const date = parseServiceNowDate(value);
+        if (!date) return value || "";
+        const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+        const future = seconds < 0;
+        const absolute = Math.abs(seconds);
+        const units = [
+          ["year", 31536000],
+          ["month", 2592000],
+          ["day", 86400],
+          ["hour", 3600],
+          ["minute", 60],
+        ];
+        const [unit, duration] =
+          units.find(([, size]) => absolute >= size) || ["minute", 60];
+        const amount = Math.max(1, Math.floor(absolute / duration));
+        const label = `${amount} ${unit}${amount === 1 ? "" : "s"}`;
+        return future ? `in ${label}` : `${label} ago`;
+      }
+
+      function isStale(ticket) {
+        const updated = parseServiceNowDate(ticket.updatedAt);
+        const inactive = /^(false|no|0)$/i.test(
+          ticket.activeValue || ticket.active || "",
+        );
+        return (
+          updated &&
+          !inactive &&
+          Date.now() - updated.getTime() > 7 * 24 * 60 * 60 * 1000
+        );
+      }
+
+      function groupLabel(ticket, groupBy) {
+        if (groupBy === "state") return ticket.state || "No state";
+        if (groupBy === "type") return ticket.tableLabel || ticket.table || "Task";
+        if (groupBy === "assignment_group")
+          return ticket.assignmentGroup || "Unassigned group";
+        return "";
+      }
+
+      function ticketHtml(ticket) {
+        const cardLevel = levelClass(ticket.priorityValue, ticket.priority);
+        const tags = [
+          ticket.priority && {
+            label: `Priority ${ticket.priority}`,
+            className: levelClass(ticket.priorityValue, ticket.priority),
+          },
+          ticket.impact && {
+            label: `Impact ${ticket.impact}`,
+            className: levelClass(ticket.impactValue, ticket.impact),
+          },
+          ticket.urgency && {
+            label: `Urgency ${ticket.urgency}`,
+            className: levelClass(ticket.urgencyValue, ticket.urgency),
+          },
+          ticket.severity && {
+            label: `Severity ${ticket.severity}`,
+            className: levelClass(ticket.severityValue, ticket.severity),
+          },
+          isStale(ticket) && {
+            label: "Stale",
+            className: "stale",
+          },
+        ].filter(Boolean);
+        const meta = [
+          ticket.assignedTo && `Assigned to ${ticket.assignedTo}`,
+          ticket.assignmentGroup && ticket.assignmentGroup,
+          ticket.openedAt && `Opened ${relativeTime(ticket.openedAt)}`,
+          ticket.updatedAt && `Updated ${relativeTime(ticket.updatedAt)}`,
+        ].filter(Boolean);
+        return `<a class="ticket ${cardLevel}" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener"><div class="top"><span class="number">${escapeHtml(ticket.number || "Ticket")}</span><span class="type">${escapeHtml(ticket.tableLabel || ticket.table)}</span>${ticket.state ? `<span class="state ${stateClass(ticket)}">${escapeHtml(ticket.state)}</span>` : ""}<span class="open-label">Open ↗</span></div><div class="description">${escapeHtml(ticket.shortDescription || "No short description")}</div><div class="meta">${tags.map((tag) => `<span class="tag ${tag.className}">${escapeHtml(tag.label)}</span>`).join("")}${meta.map(escapeHtml).join(" · ")}</div></a>`;
+      }
+
       function dataFromPage() {
         if (window.TICKET_LIST_DATA) return window.TICKET_LIST_DATA;
         const data = document.querySelector(".ticket-list-container")?.dataset.tickets;
@@ -60,11 +177,23 @@
           content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">No tickets matched these filters.</p><div class="empty">Try broadening the state, assignment, or date filters.</div>`;
           return;
         }
-        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} — select one to open it in ServiceNow.</p>${tickets.map((ticket) => {
-          const tags = [ticket.priority && `Priority ${ticket.priority}`, ticket.impact && `Impact ${ticket.impact}`, ticket.urgency && `Urgency ${ticket.urgency}`, ticket.severity && `Severity ${ticket.severity}`].filter(Boolean);
-          const meta = [ticket.assignedTo && `Assigned to ${ticket.assignedTo}`, ticket.assignmentGroup && ticket.assignmentGroup, ticket.openedAt && `Opened ${ticket.openedAt}`, ticket.closedAt && `Closed ${ticket.closedAt}`].filter(Boolean);
-          return `<a class="ticket" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener"><div class="top"><span class="number">${escapeHtml(ticket.number || "Ticket")}</span><span class="type">${escapeHtml(ticket.tableLabel || ticket.table)}</span>${ticket.state ? `<span class="state">${escapeHtml(ticket.state)}</span>` : ""}<span class="open-label">Open ↗</span></div><div class="description">${escapeHtml(ticket.shortDescription || "No short description")}</div><div class="meta">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${meta.map(escapeHtml).join(" · ")}</div></a>`;
-        }).join("")}<div id="error" class="error" role="alert"></div>`;
+        const filters = (data.filterSummary || [])
+          .map((filter) => `<span class="filter">${escapeHtml(filter)}</span>`)
+          .join("");
+        const groupBy = data.groupBy || "none";
+        const groups = new Map();
+        for (const ticket of tickets) {
+          const label = groupLabel(ticket, groupBy);
+          if (!groups.has(label)) groups.set(label, []);
+          groups.get(label).push(ticket);
+        }
+        const groupsHtml = [...groups.entries()]
+          .map(
+            ([label, groupTickets]) =>
+              `${label ? `<div class="group">${escapeHtml(label)} · ${groupTickets.length}</div>` : ""}${groupTickets.map(ticketHtml).join("")}`,
+          )
+          .join("");
+        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select one to open it in ServiceNow.</p>${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}<div id="error" class="error" role="alert"></div>`;
         content.querySelectorAll(".ticket").forEach((link) =>
           link.addEventListener("click", async (event) => {
             event.preventDefault();

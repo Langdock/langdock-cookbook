@@ -392,7 +392,7 @@ function createMcpServer(
           .boolean()
           .optional()
           .describe(
-            "Only tickets assigned to the authenticated ServiceNow user; use for “my tickets”",
+            "Only tickets assigned to the authenticated ServiceNow user; defaults to active tickets unless a state or active value is requested",
           ),
         assignment_group: filterValue
           .optional()
@@ -422,9 +422,30 @@ function createMcpServer(
           .optional()
           .describe("Maximum number of results, default 25"),
         order_by: z
-          .enum(["opened_at", "updated_at", "created_at"])
+          .enum([
+            "priority",
+            "severity",
+            "impact",
+            "urgency",
+            "state",
+            "opened_at",
+            "updated_at",
+            "created_at",
+          ])
           .optional()
-          .describe("Date field to sort descending by, default updated_at"),
+          .describe(
+            "Field to sort by. Defaults to triage order: priority, impact, then oldest opened.",
+          ),
+        order_direction: z
+          .enum(["asc", "desc"])
+          .optional()
+          .describe(
+            "Sort direction. Defaults to ascending for ranking fields and descending for dates.",
+          ),
+        group_by: z
+          .enum(["none", "state", "type", "assignment_group"])
+          .optional()
+          .describe("Optional visual grouping for the rendered ticket list"),
       },
       _meta: { ui: { resourceUri: ticketListResourceUri } },
     },
@@ -451,8 +472,23 @@ function createMcpServer(
       additional_filters,
       limit,
       order_by,
+      order_direction,
+      group_by,
     }) => {
       try {
+        const assignedToValues =
+          assigned_to == null
+            ? []
+            : Array.isArray(assigned_to)
+              ? assigned_to
+              : [assigned_to];
+        const isMyTickets =
+          assigned_to_me ||
+          assignedToValues.some((value) =>
+            /^(me|myself|current user)$/i.test(value.trim()),
+          );
+        const effectiveActive =
+          active ?? (isMyTickets && state == null ? true : undefined);
         const result = await discoverTickets(
           {
             number,
@@ -469,7 +505,7 @@ function createMcpServer(
             assignmentGroup: assignment_group,
             configurationItem: configuration_item,
             openedBy: opened_by,
-            active,
+            active: effectiveActive,
             openedAt: opened_at,
             closedAt: closed_at,
             createdAt: created_at,
@@ -478,11 +514,68 @@ function createMcpServer(
           },
           token,
           customHeaders,
-          { limit, orderBy: order_by },
+          {
+            limit,
+            sortBy: order_by,
+            sortDirection: order_direction,
+          },
         );
+        const displayFilter = (
+          label: string,
+          value: string | string[] | undefined,
+        ): string | null => {
+          if (value == null) return null;
+          const values = Array.isArray(value) ? value : [value];
+          return `${label}: ${values.join(", ")}`;
+        };
+        const displayDateRange = (
+          label: string,
+          range: { after?: string; before?: string } | undefined,
+        ): string | null => {
+          if (!range) return null;
+          if (range.after && range.before) {
+            return `${label}: ${range.after} to ${range.before}`;
+          }
+          return range.after
+            ? `${label}: after ${range.after}`
+            : `${label}: before ${range.before}`;
+        };
+        const filterSummary = [
+          assigned_to_me ? "Assigned to me" : displayFilter("Assigned to", assigned_to),
+          displayFilter("Assignment group", assignment_group),
+          displayFilter("Caller", caller),
+          displayFilter("Configuration item", configuration_item),
+          displayFilter("Opened by", opened_by),
+          displayFilter("State", state),
+          displayFilter("Priority", priority),
+          displayFilter("Severity", severity),
+          displayFilter("Impact", impact),
+          displayFilter("Urgency", urgency),
+          displayFilter("Category", category),
+          effectiveActive == null
+            ? null
+            : `Active: ${effectiveActive ? "Yes" : "No"}`,
+          short_description
+            ? `Description contains: ${short_description}`
+            : null,
+          displayDateRange("Opened", opened_at),
+          displayDateRange("Closed", closed_at),
+          displayDateRange("Created", created_at),
+          displayDateRange("Updated", updated_at),
+        ].filter((value): value is string => Boolean(value));
+        const defaultDirection = order_by
+          ? ["opened_at", "updated_at", "created_at"].includes(order_by)
+            ? "desc"
+            : "asc"
+          : null;
         const renderData = {
           title: "ServiceNow tickets",
           tickets: result.tickets,
+          filterSummary,
+          groupBy: group_by || "none",
+          sortLabel: order_by
+            ? `${order_by.replaceAll("_", " ")} ${order_direction || defaultDirection}`
+            : "priority, impact, oldest opened",
         };
         let html = await getTicketListHtml();
         html = html.replace(

@@ -157,6 +157,15 @@ short-description text, active status, `assigned_to_me` or
 `"assigned_to": "me"` for “my tickets”, created/updated ranges, bounded result
 limits, and exact-match `additional_filters` for other fields. Choice labels
 such as `1 - Critical` are accepted as well as their stored values.
+“My tickets” searches default to active records unless a state or explicit
+`active` value is supplied.
+
+Discovery defaults to a triage-oriented order: priority, impact, then oldest
+opened ticket. Use `order_by` and `order_direction` to sort by priority,
+severity, impact, urgency, state, or ticket dates. The rendered list can also
+use `group_by` to group results by state, ticket type, or assignment group. It
+uses colored ranking/state badges, relative ticket ages, and a summary of the
+active filters.
 
 ```json
 {
