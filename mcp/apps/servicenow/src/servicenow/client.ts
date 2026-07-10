@@ -70,6 +70,57 @@ export interface TicketRecord {
   values: Record<string, { value: string; display: string }>;
 }
 
+export interface DateRangeFilter {
+  after?: string;
+  before?: string;
+}
+
+export interface TicketFilters {
+  number?: string;
+  shortDescription?: string;
+  state?: string | string[];
+  priority?: string | string[];
+  impact?: string | string[];
+  urgency?: string | string[];
+  severity?: string | string[];
+  category?: string | string[];
+  caller?: string | string[];
+  assignedTo?: string | string[];
+  assignedToMe?: boolean;
+  assignmentGroup?: string | string[];
+  configurationItem?: string | string[];
+  openedBy?: string | string[];
+  active?: boolean;
+  openedAt?: DateRangeFilter;
+  closedAt?: DateRangeFilter;
+  createdAt?: DateRangeFilter;
+  updatedAt?: DateRangeFilter;
+  additionalFilters?: Record<string, string | string[]>;
+}
+
+export interface TicketSummary {
+  table: string;
+  sysId: string;
+  number: string;
+  shortDescription: string;
+  state: string;
+  priority: string;
+  impact: string;
+  urgency: string;
+  severity: string;
+  category: string;
+  caller: string;
+  assignedTo: string;
+  assignmentGroup: string;
+  configurationItem: string;
+  openedBy: string;
+  openedAt: string;
+  closedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  active: string;
+}
+
 /** One comment or work-note entry from the record's activity stream. */
 export interface ActivityEntry {
   field: "comments" | "work_notes";
@@ -368,6 +419,269 @@ function toTicketRecord(
     number: values.number?.value || undefined,
     displayValue: values.short_description?.display || undefined,
     values,
+  };
+}
+
+const TICKET_FIELDS = [
+  "sys_id",
+  "sys_class_name",
+  "number",
+  "short_description",
+  "state",
+  "priority",
+  "impact",
+  "urgency",
+  "severity",
+  "category",
+  "caller_id",
+  "assigned_to",
+  "assignment_group",
+  "cmdb_ci",
+  "opened_by",
+  "opened_at",
+  "closed_at",
+  "sys_created_on",
+  "sys_updated_on",
+  "active",
+].join(",");
+
+function escapeQueryValue(value: string): string {
+  if (/[\^\r\n]/.test(value)) {
+    throw new Error("Filter values cannot contain ^ or line breaks");
+  }
+  return value.trim();
+}
+
+function validateFilterField(field: string): string {
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)?$/.test(field)) {
+    throw new Error(`Invalid additional filter field "${field}"`);
+  }
+  return field;
+}
+
+function addMatch(
+  conditions: string[],
+  field: string,
+  value: string | string[] | undefined,
+): void {
+  if (value == null) return;
+  const values = (Array.isArray(value) ? value : [value])
+    .map((item) => escapeQueryValue(item))
+    .filter(Boolean);
+  if (values.length === 0) return;
+  conditions.push(
+    values.length === 1
+      ? `${field}=${values[0]}`
+      : `${field}IN${values.join(",")}`,
+  );
+}
+
+function addDateRange(
+  conditions: string[],
+  field: string,
+  range: DateRangeFilter | undefined,
+): void {
+  if (!range) return;
+  if (range.after) conditions.push(`${field}>=${escapeQueryValue(range.after)}`);
+  if (range.before) conditions.push(`${field}<=${escapeQueryValue(range.before)}`);
+}
+
+/** Build a restrictive encoded query without accepting arbitrary encoded query text. */
+export function buildTicketQuery(filters: TicketFilters = {}): string {
+  const conditions: string[] = [];
+  addMatch(conditions, "number", filters.number);
+  if (filters.shortDescription) {
+    conditions.push(
+      `short_descriptionLIKE${escapeQueryValue(filters.shortDescription)}`,
+    );
+  }
+  addMatch(conditions, "state", filters.state);
+  addMatch(conditions, "priority", filters.priority);
+  addMatch(conditions, "impact", filters.impact);
+  addMatch(conditions, "urgency", filters.urgency);
+  addMatch(conditions, "severity", filters.severity);
+  addMatch(conditions, "category", filters.category);
+  addMatch(conditions, "caller_id.name", filters.caller);
+  addMatch(conditions, "assigned_to.name", filters.assignedTo);
+  addMatch(conditions, "assignment_group.name", filters.assignmentGroup);
+  addMatch(conditions, "cmdb_ci.name", filters.configurationItem);
+  addMatch(conditions, "opened_by.name", filters.openedBy);
+  if (filters.active != null) conditions.push(`active=${filters.active}`);
+  addDateRange(conditions, "opened_at", filters.openedAt);
+  addDateRange(conditions, "closed_at", filters.closedAt);
+  addDateRange(conditions, "sys_created_on", filters.createdAt);
+  addDateRange(conditions, "sys_updated_on", filters.updatedAt);
+
+  for (const [field, value] of Object.entries(filters.additionalFilters || {})) {
+    addMatch(conditions, validateFilterField(field), value);
+  }
+
+  return conditions.join("^");
+}
+
+function toTicketSummary(raw: Record<string, unknown>): TicketSummary {
+  const values: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    values[key] = normalizeValue(value).display;
+  }
+  return {
+    table: values.sys_class_name || "task",
+    sysId: normalizeValue(raw.sys_id).value,
+    number: values.number || "",
+    shortDescription: values.short_description || "",
+    state: values.state || "",
+    priority: values.priority || "",
+    impact: values.impact || "",
+    urgency: values.urgency || "",
+    severity: values.severity || "",
+    category: values.category || "",
+    caller: values.caller_id || "",
+    assignedTo: values.assigned_to || "",
+    assignmentGroup: values.assignment_group || "",
+    configurationItem: values.cmdb_ci || "",
+    openedBy: values.opened_by || "",
+    openedAt: values.opened_at || "",
+    closedAt: values.closed_at || "",
+    createdAt: values.sys_created_on || "",
+    updatedAt: values.sys_updated_on || "",
+    active: values.active || "",
+  };
+}
+
+const CHOICE_FILTER_FIELDS = [
+  "state",
+  "priority",
+  "impact",
+  "urgency",
+  "severity",
+] as const;
+
+/**
+ * The Table API expects stored choice values (for example, `1`) while people
+ * naturally use labels (for example, `1 - Critical`). Resolve matching labels
+ * across the instance's task-related choice definitions before querying.
+ */
+async function resolveChoiceFilterLabels(
+  filters: TicketFilters,
+  headers: Record<string, string>,
+  instanceUrl: string,
+): Promise<TicketFilters> {
+  const requested = CHOICE_FILTER_FIELDS.flatMap((field) => {
+    const value = filters[field];
+    return value == null ? [] : Array.isArray(value) ? value : [value];
+  });
+  if (requested.length === 0) return filters;
+
+  const params = new URLSearchParams({
+    sysparm_query: `elementIN${CHOICE_FILTER_FIELDS.join(",")}^inactive=false`,
+    sysparm_fields: "element,label,value",
+    sysparm_limit: "1000",
+  });
+  const response = await fetch(
+    `${instanceUrl}/api/now/table/sys_choice?${params}`,
+    { method: "GET", headers },
+  );
+  if (!response.ok) return filters;
+
+  const data = await response.json();
+  const choices = (data.result || []) as Array<Record<string, unknown>>;
+  const resolved: TicketFilters = { ...filters };
+  for (const field of CHOICE_FILTER_FIELDS) {
+    const input = filters[field];
+    if (input == null) continue;
+    const values = Array.isArray(input) ? input : [input];
+    resolved[field] = values.flatMap((value) => {
+      const normalized = value.trim().toLocaleLowerCase();
+      const matches = choices
+        .filter(
+          (choice) =>
+            String(choice.element) === field &&
+            String(choice.label).trim().toLocaleLowerCase() === normalized,
+        )
+        .map((choice) => String(choice.value));
+      return matches.length > 0 ? matches : [value];
+    });
+  }
+  return resolved;
+}
+
+async function getCurrentUserSysId(
+  headers: Record<string, string>,
+  instanceUrl: string,
+): Promise<string> {
+  const response = await fetch(
+    `${instanceUrl}/api/now/ui/user/current_user`,
+    { method: "GET", headers },
+  );
+  if (!response.ok) {
+    throw new Error(
+      "Could not identify the authenticated ServiceNow user for the “my tickets” filter",
+    );
+  }
+  const data = await response.json();
+  const result = data.result || data;
+  const sysId =
+    result.sys_id || result.user?.sys_id || result.user?.value || result.value;
+  if (!sysId || !looksLikeSysId(String(sysId))) {
+    throw new Error(
+      "ServiceNow did not return a user sys_id for the “my tickets” filter",
+    );
+  }
+  return String(sysId);
+}
+
+/**
+ * Discover task-derived records using user-facing filters. ServiceNow applies
+ * the authenticated user's table and record ACLs to this request.
+ */
+export async function discoverTickets(
+  filters: TicketFilters,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+  options: { limit?: number; orderBy?: "opened_at" | "updated_at" | "created_at" } = {},
+): Promise<{ tickets: TicketSummary[]; query: string }> {
+  const instanceUrl = getInstanceUrl();
+  const headers = buildHeaders(accessToken, extraHeaders);
+  const resolvedFilters = await resolveChoiceFilterLabels(
+    filters,
+    headers,
+    instanceUrl,
+  );
+  if (filters.assignedToMe) {
+    const currentUserSysId = await getCurrentUserSysId(headers, instanceUrl);
+    resolvedFilters.additionalFilters = {
+      ...resolvedFilters.additionalFilters,
+      assigned_to: currentUserSysId,
+    };
+  }
+  const query = buildTicketQuery(resolvedFilters);
+  const orderField =
+    options.orderBy === "opened_at"
+      ? "opened_at"
+      : options.orderBy === "created_at"
+        ? "sys_created_on"
+        : "sys_updated_on";
+  const params = new URLSearchParams({
+    sysparm_fields: TICKET_FIELDS,
+    sysparm_display_value: "all",
+    sysparm_exclude_reference_link: "true",
+    sysparm_limit: String(Math.min(Math.max(options.limit ?? 25, 1), 100)),
+    sysparm_query: [query, `ORDERBYDESC${orderField}`].filter(Boolean).join("^"),
+  });
+  const response = await fetch(`${instanceUrl}/api/now/table/task?${params}`, {
+    method: "GET",
+    headers,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+  }
+  const data = await response.json();
+  return {
+    tickets: (data.result || []).map((row: Record<string, unknown>) =>
+      toTicketSummary(row),
+    ),
+    query,
   };
 }
 

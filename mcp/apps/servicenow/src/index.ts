@@ -20,6 +20,7 @@ import {
   storeAuthorizationSession,
 } from "./oauth/provider.js";
 import {
+  discoverTickets,
   getActivity,
   getFormFields,
   getRecord,
@@ -31,6 +32,7 @@ import { extractCustomHeaders } from "./utils/extractCustomHeaders.js";
 import { getBaseUrl } from "./utils/getBaseUrl.js";
 import { getFormHtml } from "./utils/getFormHtml.js";
 import { getTicketHtml } from "./utils/getTicketHtml.js";
+import { getTicketListHtml } from "./utils/getTicketListHtml.js";
 import { getInstanceUrl } from "./utils/getInstanceUrl.js";
 import { safeJsonForHtml } from "./utils/safeJsonForHtml.js";
 
@@ -194,6 +196,7 @@ function createMcpServer(
 
   const formResourceUri = "ui://servicenow/form";
   const ticketResourceUri = "ui://servicenow/ticket";
+  const ticketListResourceUri = "ui://servicenow/ticket-list";
 
   // Register form UI resource
   registerAppResource(
@@ -207,6 +210,22 @@ function createMcpServer(
           uri: formResourceUri,
           mimeType: RESOURCE_MIME_TYPE,
           text: await getFormHtml(),
+        },
+      ],
+    }),
+  );
+
+  registerAppResource(
+    server,
+    ticketListResourceUri,
+    ticketListResourceUri,
+    { mimeType: RESOURCE_MIME_TYPE },
+    async () => ({
+      contents: [
+        {
+          uri: ticketListResourceUri,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: await getTicketListHtml(),
         },
       ],
     }),
@@ -281,6 +300,187 @@ function createMcpServer(
           content: [
             { type: "text" as const, text: JSON.stringify(schema, null, 2) },
           ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  const filterValue = z.union([z.string(), z.array(z.string()).min(1)]);
+  const dateRange = z
+    .object({
+      after: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}(?:[ T].*)?$/, "Use an ISO date or datetime")
+        .optional(),
+      before: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}(?:[ T].*)?$/, "Use an ISO date or datetime")
+        .optional(),
+    })
+    .refine((range) => range.after || range.before, {
+      message: "Provide at least one range boundary",
+    });
+
+  // Tool: Discover tickets without requiring a ServiceNow table name.
+  registerAppTool(
+    server,
+    "discover_tickets",
+    {
+      title: "Discover Tickets",
+      description:
+        "Find ServiceNow tickets across task-derived records without asking the user for a table. Use the named filters for requests such as “list tickets with severity 1, state closed, and high impact”. Choice labels such as “1 - Critical” are accepted. The result is an interactive list; selecting a ticket opens its editable panel.",
+      inputSchema: {
+        number: z.string().optional().describe("Exact ticket number"),
+        short_description: z
+          .string()
+          .optional()
+          .describe("Text contained in the short description"),
+        state: filterValue.optional().describe("State value or label, or values/labels"),
+        priority: filterValue
+          .optional()
+          .describe("Priority value or label, or values/labels"),
+        impact: filterValue
+          .optional()
+          .describe("Impact value or label, or values/labels"),
+        urgency: filterValue
+          .optional()
+          .describe("Urgency value or label, or values/labels"),
+        severity: filterValue
+          .optional()
+          .describe("Severity value or label, or values/labels"),
+        category: filterValue.optional().describe("Category name or names"),
+        caller: filterValue
+          .optional()
+          .describe("Caller display name or names"),
+        assigned_to: filterValue
+          .optional()
+          .describe("Assignee display name or names"),
+        assigned_to_me: z
+          .boolean()
+          .optional()
+          .describe(
+            "Only tickets assigned to the authenticated ServiceNow user; use for “my tickets”",
+          ),
+        assignment_group: filterValue
+          .optional()
+          .describe("Assignment group display name or names"),
+        configuration_item: filterValue
+          .optional()
+          .describe("Configuration item display name or names"),
+        opened_by: filterValue
+          .optional()
+          .describe("Opened-by display name or names"),
+        active: z.boolean().optional().describe("Whether the ticket is active"),
+        opened_at: dateRange.optional().describe("Opened date/time range"),
+        closed_at: dateRange.optional().describe("Closed date/time range"),
+        created_at: dateRange.optional().describe("Created date/time range"),
+        updated_at: dateRange.optional().describe("Last-updated date/time range"),
+        additional_filters: z
+          .record(z.string(), filterValue)
+          .optional()
+          .describe(
+            "Extra exact-match field filters, keyed by a ServiceNow field name. Do not use an encoded query.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum number of results, default 25"),
+        order_by: z
+          .enum(["opened_at", "updated_at", "created_at"])
+          .optional()
+          .describe("Date field to sort descending by, default updated_at"),
+      },
+      _meta: { ui: { resourceUri: ticketListResourceUri } },
+    },
+    async ({
+      number,
+      short_description,
+      state,
+      priority,
+      impact,
+      urgency,
+      severity,
+      category,
+      caller,
+      assigned_to,
+      assigned_to_me,
+      assignment_group,
+      configuration_item,
+      opened_by,
+      active,
+      opened_at,
+      closed_at,
+      created_at,
+      updated_at,
+      additional_filters,
+      limit,
+      order_by,
+    }) => {
+      try {
+        const result = await discoverTickets(
+          {
+            number,
+            shortDescription: short_description,
+            state,
+            priority,
+            impact,
+            urgency,
+            severity,
+            category,
+            caller,
+            assignedTo: assigned_to,
+            assignedToMe: assigned_to_me,
+            assignmentGroup: assignment_group,
+            configurationItem: configuration_item,
+            openedBy: opened_by,
+            active,
+            openedAt: opened_at,
+            closedAt: closed_at,
+            createdAt: created_at,
+            updatedAt: updated_at,
+            additionalFilters: additional_filters,
+          },
+          token,
+          customHeaders,
+          { limit, orderBy: order_by },
+        );
+        const renderData = {
+          title: "ServiceNow tickets",
+          tickets: result.tickets,
+        };
+        let html = await getTicketListHtml();
+        html = html.replace(
+          '<div class="ticket-list-container">',
+          `<div class="ticket-list-container" data-tickets="${encodeForDataAttr(renderData)}">`,
+        );
+        html = html.replace(
+          "</head>",
+          `<script>window.TICKET_LIST_DATA = ${safeJsonForHtml(renderData)};</script></head>`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ tickets: result.tickets }, null, 2),
+            },
+            {
+              type: "resource" as const,
+              resource: {
+                uri: ticketListResourceUri,
+                mimeType: RESOURCE_MIME_TYPE,
+                text: html,
+              },
+            },
+          ],
+          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
         };
       } catch (error) {
         return {
@@ -464,9 +664,14 @@ function createMcpServer(
     {
       title: "Render Ticket",
       description:
-        "Open an existing ServiceNow record as an interactive in-chat panel. Users can edit fields, change state, and add comments or work notes directly in the frame.",
+        "Open an existing ServiceNow ticket as an interactive in-chat panel. A table is optional: when omitted, the server discovers the ticket's concrete task type automatically. Users can edit fields, change state, and add comments or work notes directly in the frame.",
       inputSchema: {
-        table: z.string().describe("The ServiceNow table name"),
+        table: z
+          .string()
+          .optional()
+          .describe(
+            "Optional ServiceNow table name. Omit this for a ticket discovered through discover_tickets.",
+          ),
         id: z
           .string()
           .describe("The record sys_id or number (e.g. INC0010023)"),
@@ -475,12 +680,22 @@ function createMcpServer(
     },
     async ({ table, id }) => {
       try {
+        const initialRecord = await getRecord(
+          table || "task",
+          id,
+          token,
+          customHeaders,
+        );
+        const resolvedTable =
+          table || initialRecord.values.sys_class_name?.value || "task";
         const [schema, record] = await Promise.all([
-          getFormFields(table, token, customHeaders),
-          getRecord(table, id, token, customHeaders),
+          getFormFields(resolvedTable, token, customHeaders),
+          resolvedTable === (table || "task")
+            ? Promise.resolve(initialRecord)
+            : getRecord(resolvedTable, initialRecord.sysId, token, customHeaders),
         ]);
         const activity = await getActivity(
-          table,
+          resolvedTable,
           record.sysId,
           token,
           customHeaders,
@@ -495,11 +710,11 @@ function createMcpServer(
         }
 
         const recordUrl = `${getInstanceUrl()}/nav_to.do?uri=${encodeURIComponent(
-          `${table}.do?sys_id=${record.sysId}`,
+          `${resolvedTable}.do?sys_id=${record.sysId}`,
         )}`;
 
         const renderData = {
-          table,
+          table: resolvedTable,
           sysId: record.sysId,
           number: record.number ?? "",
           isTaskTable: schema.isTaskTable ?? false,

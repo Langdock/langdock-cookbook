@@ -5,6 +5,7 @@ An MCP (Model Context Protocol) server for **ServiceNow** with interactive, in-c
 It can:
 
 - Inspect a ServiceNow table's fields and render an editable **creation form** right inside the client (optionally pre-filled from the conversation), then submit it as a new record.
+- **Discover tickets** across task-derived records using user-facing filters such as state, severity, impact, assignment, and date ranges — without asking the user to identify a ServiceNow table — then open any result in the interactive ticket panel.
 - **Open an existing record** (e.g. an incident) as an interactive **ticket panel** inside the client, where users can edit fields, change state, and add comments or work notes — each change saved straight back to ServiceNow without leaving the chat.
 
 The server acts as an OAuth 2.0 proxy with Dynamic Client Registration (DCR): MCP clients authenticate through this server, which delegates user sign-in to your ServiceNow instance and forwards the ServiceNow access token on every API call.
@@ -141,11 +142,37 @@ Fetch a single existing record by `sys_id` or by its human-readable number (e.g.
 
 **Parameters:** `table` (required), `id` (required) — a `sys_id` or number.
 
+### `discover_tickets`
+
+Find tickets across the `task` hierarchy without requiring a table name. Results
+are rendered in an interactive list; selecting a result opens its editable ticket
+panel using the ticket's concrete ServiceNow table.
+
+Use the named filters instead of an encoded query. The tool supports the fields
+shown in the ticket panel: `state`, `priority`, `impact`, `urgency`, `severity`,
+`category`, `caller`, `assigned_to`, `assignment_group`, `configuration_item`,
+`opened_by`, and opened/closed date ranges. It also supports ticket number,
+short-description text, active status, `assigned_to_me` for “my tickets”,
+created/updated ranges, bounded result limits, and exact-match
+`additional_filters` for other fields. Choice labels such as `1 - Critical`
+are accepted as well as their stored values.
+
+```json
+{
+  "severity": "1 - Critical",
+  "state": "Closed",
+  "impact": "1 - High",
+  "assigned_to": "Charlie Witherspoon",
+  "limit": 25
+}
+```
+
 ### `render_ticket`
 
 Open an existing record as an **interactive ticket panel** inside the client. Fetches the record, its field schema, and its comment/work-note activity, then renders an editable panel. Users can edit fields, change state, and post comments/work notes directly in the frame.
 
-**Parameters:** `table` (required), `id` (required) — a `sys_id` or number.
+**Parameters:** `id` (required) — a `sys_id` or number; `table` (optional) —
+the tool detects the concrete task type when it is omitted.
 
 ```json
 {
@@ -175,6 +202,10 @@ The interactive creation form rendered by the `render_form` tool, served as an M
 ### `ui://servicenow/ticket`
 
 The interactive ticket panel rendered by the `render_ticket` tool, served as an MCP App resource.
+
+### `ui://servicenow/ticket-list`
+
+The interactive ticket-discovery result list rendered by `discover_tickets`.
 
 ## Client Configuration
 
