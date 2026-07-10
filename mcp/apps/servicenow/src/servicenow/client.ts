@@ -100,6 +100,7 @@ export interface TicketFilters {
 
 export interface TicketSummary {
   table: string;
+  tableLabel: string;
   sysId: string;
   recordUrl: string;
   number: string;
@@ -541,10 +542,11 @@ function toTicketSummary(
   for (const [key, value] of Object.entries(raw)) {
     values[key] = normalizeValue(value).display;
   }
-  const table = values.sys_class_name || "task";
+  const table = normalizeValue(raw.sys_class_name).value || "task";
   const sysId = normalizeValue(raw.sys_id).value;
   return {
     table,
+    tableLabel: values.sys_class_name || table,
     sysId,
     recordUrl: `${instanceUrl}/nav_to.do?uri=${encodeURIComponent(
       `${table}.do?sys_id=${sysId}`,
