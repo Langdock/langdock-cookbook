@@ -84,6 +84,7 @@ export interface TicketFilters {
   urgency?: string | string[];
   severity?: string | string[];
   category?: string | string[];
+  relatedUser?: string | string[];
   caller?: string | string[];
   assignedTo?: string | string[];
   assignedToMe?: boolean;
@@ -513,6 +514,21 @@ function addDateRange(
   if (range.before) conditions.push(`${field}<=${escapeQueryValue(range.before)}`);
 }
 
+function buildRelatedUserMatches(
+  value: string | string[] | undefined,
+): string[] {
+  if (value == null) return [];
+  const values = (Array.isArray(value) ? value : [value])
+    .map((item) => escapeQueryValue(item))
+    .filter(Boolean);
+  if (values.length === 0) return [];
+  const operator = values.length === 1 ? "=" : "IN";
+  const joined = values.join(",");
+  return ["caller_id", "opened_by", "assigned_to"].map(
+    (field) => `${field}.name${operator}${joined}`,
+  );
+}
+
 /** Build a restrictive encoded query without accepting arbitrary encoded query text. */
 export function buildTicketQuery(filters: TicketFilters = {}): string {
   const conditions: string[] = [];
@@ -546,8 +562,14 @@ export function buildTicketQuery(filters: TicketFilters = {}): string {
   for (const [field, value] of Object.entries(filters.additionalFilters || {})) {
     addMatch(conditions, validateFilterField(field), value);
   }
+  const relatedUserMatches = buildRelatedUserMatches(filters.relatedUser);
+  if (relatedUserMatches.length === 0) return conditions.join("^");
 
-  return conditions.join("^");
+  // ServiceNow encoded queries have no grouping parentheses. Duplicate the
+  // shared predicates into NQ branches so they apply to every user role.
+  return relatedUserMatches
+    .map((match) => [...conditions, match].join("^"))
+    .join("^NQ");
 }
 
 function toTicketSummary(

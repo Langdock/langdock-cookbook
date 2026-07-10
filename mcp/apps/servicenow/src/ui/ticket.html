@@ -94,6 +94,19 @@
         color: var(--fg);
         text-decoration: underline;
       }
+      .back-link {
+        border: 0;
+        background: transparent;
+        color: var(--fg-muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        padding: 0;
+      }
+      .back-link:hover {
+        color: var(--fg);
+        text-decoration: underline;
+      }
 
       .section {
         margin-bottom: 22px;
@@ -609,6 +622,15 @@
           .replace(/"/g, "&quot;");
       }
 
+      function base64ToUtf8(value) {
+        const binary = atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return new TextDecoder().decode(bytes);
+      }
+
       function toTitleCase(str) {
         return String(str)
           .replace(/_/g, " ")
@@ -823,6 +845,7 @@
         contentEl.innerHTML = `
           <div class="ticket-header">
             <div class="eyebrow">
+              ${window.RETURN_TO_TICKET_LIST ? '<button type="button" class="back-link">← Results</button>' : ""}
               ${ticket.number ? `<span class="ticket-number">${escapeHtml(ticket.number)}</span>` : ""}
               ${stateBadge()}
               ${ticket.recordUrl ? `<a class="open-link" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener">Open in ServiceNow ↗</a>` : ""}
@@ -886,6 +909,13 @@
       }
 
       function wireEvents() {
+        document.querySelector(".back-link")?.addEventListener("click", () => {
+          const listHtml = base64ToUtf8(window.RETURN_TO_TICKET_LIST);
+          document.open();
+          document.write(listHtml);
+          document.close();
+        });
+
         document.querySelector(".open-link")?.addEventListener("click", async (event) => {
           event.preventDefault();
           try {

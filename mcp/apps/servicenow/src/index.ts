@@ -359,7 +359,7 @@ function createMcpServer(
     {
       title: "Discover Tickets",
       description:
-        "Find ServiceNow tickets across task-derived records without asking the user for a table. Use the named filters for requests such as “list tickets with severity 1, state closed, and high impact”. Choice labels such as “1 - Critical” are accepted. The result is an interactive list; selecting a ticket opens its editable panel.",
+        "Find ServiceNow tickets across task-derived records without asking the user for a table. Use related_user when a request says tickets “for” a person without specifying whether they are the caller, opener, or assignee; use the role-specific filters only when the role is explicit. Choice labels such as “1 - Critical” are accepted. Selecting a result opens its in-chat ticket panel, while a separate action opens ServiceNow.",
       inputSchema: {
         number: z.string().optional().describe("Exact ticket number"),
         short_description: z
@@ -380,29 +380,40 @@ function createMcpServer(
           .optional()
           .describe("Severity value or label, or values/labels"),
         category: filterValue.optional().describe("Category name or names"),
+        related_user: filterValue
+          .optional()
+          .describe(
+            "Cross-role person filter. Matches caller, opened by, OR assigned to. Use when the user says tickets “for”, “related to”, or “involving” a person without naming a specific relationship.",
+          ),
         caller: filterValue
           .optional()
-          .describe("Caller display name or names"),
+          .describe(
+            "Caller display name or names. Use only when the request explicitly says caller or requester; otherwise use related_user.",
+          ),
         assigned_to: filterValue
           .optional()
           .describe(
-            'Assignee display name or names. Use "me" for the authenticated ServiceNow user.',
+            'Assignee display name or names. Use only when the request explicitly says assigned to, owned by, or assignee. Use "me" for the authenticated ServiceNow user.',
           ),
         assigned_to_me: z
           .boolean()
           .optional()
           .describe(
-            "Only tickets assigned to the authenticated ServiceNow user; defaults to active tickets unless a state or active value is requested",
+            "Only tickets assigned to the authenticated ServiceNow user. Use for “my assigned tickets”, not tickets merely opened by or involving the user. Defaults to active unless state or active is specified.",
           ),
         assignment_group: filterValue
           .optional()
-          .describe("Assignment group display name or names"),
+          .describe(
+            "Assignment group display name or names. This filters the responsible group, not an individual user.",
+          ),
         configuration_item: filterValue
           .optional()
           .describe("Configuration item display name or names"),
         opened_by: filterValue
           .optional()
-          .describe("Opened-by display name or names"),
+          .describe(
+            "Opened-by display name or names. Use only when the request explicitly says opened by or created by; otherwise use related_user.",
+          ),
         active: z.boolean().optional().describe("Whether the ticket is active"),
         opened_at: dateRange.optional().describe("Opened date/time range"),
         closed_at: dateRange.optional().describe("Closed date/time range"),
@@ -458,6 +469,7 @@ function createMcpServer(
       urgency,
       severity,
       category,
+      related_user,
       caller,
       assigned_to,
       assigned_to_me,
@@ -499,6 +511,7 @@ function createMcpServer(
             urgency,
             severity,
             category,
+            relatedUser: related_user,
             caller,
             assignedTo: assigned_to,
             assignedToMe: assigned_to_me,
@@ -542,6 +555,7 @@ function createMcpServer(
         };
         const filterSummary = [
           assigned_to_me ? "Assigned to me" : displayFilter("Assigned to", assigned_to),
+          displayFilter("Related user", related_user),
           displayFilter("Assignment group", assignment_group),
           displayFilter("Caller", caller),
           displayFilter("Configuration item", configuration_item),
@@ -1008,17 +1022,16 @@ function createMcpServer(
 
         let html = await getTicketHtml();
         html = html.replace(
-          '<div class="ticket-container">',
-          `<div class="ticket-container" data-ticket="${encodeForDataAttr(renderData)}">`,
-        );
-        html = html.replace(
           "</head>",
           `<script>window.TICKET_DATA = ${safeJsonForHtml(renderData)};</script></head>`,
         );
 
         return {
           content: [
-            { type: "text", text: JSON.stringify(renderData) },
+            {
+              type: "text",
+              text: `Opened ${record.number || record.sysId} from ${resolvedTable}.`,
+            },
             {
               type: "resource",
               resource: {
@@ -1028,7 +1041,6 @@ function createMcpServer(
               },
             },
           ],
-          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
         };
       } catch (error) {
         return {

@@ -146,8 +146,9 @@ Fetch a single existing record by `sys_id` or by its human-readable number (e.g.
 
 Find tickets across the `task` hierarchy without requiring a table name. Results
 are returned as inline links and rendered in an interactive list; selecting a
-result opens the actual record in ServiceNow. The result's concrete table and
-`sys_id` can also be passed to `render_ticket` for in-chat editing.
+card opens the editable ticket panel in the same App, with a back action that
+preserves the search results. A separate action opens the actual record in
+ServiceNow.
 
 Use the named filters instead of an encoded query. The tool supports the fields
 shown in the ticket panel: `state`, `priority`, `impact`, `urgency`, `severity`,
@@ -159,6 +160,11 @@ limits, and exact-match `additional_filters` for other fields. Choice labels
 such as `1 - Critical` are accepted as well as their stored values.
 “My tickets” searches default to active records unless a state or explicit
 `active` value is supplied.
+
+For requests such as “tickets for ITIL User” where the user’s role is not
+specified, use `related_user`. It matches the person across caller, opened-by,
+and assignee fields while preserving all other filters. Use `caller`,
+`opened_by`, or `assigned_to` only when that relationship is explicit.
 
 Discovery defaults to a triage-oriented order: priority, impact, then oldest
 opened ticket. Use `order_by` and `order_direction` to sort by priority,
