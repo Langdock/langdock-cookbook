@@ -29,6 +29,19 @@
     </div>
     <script type="module">
       const content = document.getElementById("content");
+      let messageId = 0;
+      const pendingRequests = new Map();
+
+      function requestHost(method, params) {
+        const id = ++messageId;
+        return new Promise((resolve, reject) => {
+          pendingRequests.set(id, { resolve, reject });
+          window.parent.postMessage(
+            { jsonrpc: "2.0", id, method, params },
+            "*",
+          );
+        });
+      }
 
       function escapeHtml(value) {
         return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -52,12 +65,36 @@
           const meta = [ticket.assignedTo && `Assigned to ${ticket.assignedTo}`, ticket.assignmentGroup && ticket.assignmentGroup, ticket.openedAt && `Opened ${ticket.openedAt}`, ticket.closedAt && `Closed ${ticket.closedAt}`].filter(Boolean);
           return `<a class="ticket" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener"><div class="top"><span class="number">${escapeHtml(ticket.number || "Ticket")}</span><span class="type">${escapeHtml(ticket.table)}</span>${ticket.state ? `<span class="state">${escapeHtml(ticket.state)}</span>` : ""}<span class="open-label">Open ↗</span></div><div class="description">${escapeHtml(ticket.shortDescription || "No short description")}</div><div class="meta">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}${meta.map(escapeHtml).join(" · ")}</div></a>`;
         }).join("")}<div id="error" class="error" role="alert"></div>`;
+        content.querySelectorAll(".ticket").forEach((link) =>
+          link.addEventListener("click", async (event) => {
+            event.preventDefault();
+            const url = link.href;
+            const errorEl = document.getElementById("error");
+            try {
+              const result = await requestHost("ui/open-link", { url });
+              if (result?.isError) {
+                throw new Error("The host denied the link request");
+              }
+            } catch (error) {
+              errorEl.textContent = `${error.message || "Could not open ServiceNow."} URL: ${url}`;
+            }
+          }),
+        );
       }
 
       window.addEventListener("message", (event) => {
         const message = event.data || {};
         const data = message.params?._meta?.["mcpui.dev/ui-initial-render-data"] || message.data || message.renderData;
         if (data?.tickets) render(data);
+        if (message.id && pendingRequests.has(message.id)) {
+          const request = pendingRequests.get(message.id);
+          pendingRequests.delete(message.id);
+          if (message.error) {
+            request.reject(new Error(message.error.message || "Host request failed"));
+          } else {
+            request.resolve(message.result);
+          }
+        }
       });
       const embedded = dataFromPage();
       if (embedded) render(embedded);

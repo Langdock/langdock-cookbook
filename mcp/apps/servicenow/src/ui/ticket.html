@@ -545,20 +545,35 @@
           }
         }
 
-        async callServerTool(params) {
+        request(method, params) {
           const id = ++this._messageId;
           return new Promise((resolve, reject) => {
             this._pendingRequests.set(id, { resolve, reject });
             window.parent.postMessage(
               {
                 jsonrpc: "2.0",
-                method: "tools/call",
+                method,
                 id,
-                params: { name: params.name, arguments: params.arguments },
+                params,
               },
               "*",
             );
           });
+        }
+
+        callServerTool(params) {
+          return this.request("tools/call", {
+            name: params.name,
+            arguments: params.arguments,
+          });
+        }
+
+        openLink(url) {
+          return this.request("ui/open-link", { url });
+        }
+
+        downloadFile(contents) {
+          return this.request("ui/download-file", { contents });
         }
       }
 
@@ -871,6 +886,19 @@
       }
 
       function wireEvents() {
+        document.querySelector(".open-link")?.addEventListener("click", async (event) => {
+          event.preventDefault();
+          try {
+            const result = await app.openLink(ticket.recordUrl);
+            if (result?.isError) throw new Error("The host denied the link request");
+          } catch (err) {
+            showBanner(
+              "error",
+              `${err.message || "Could not open ServiceNow."} URL: ${ticket.recordUrl}`,
+            );
+          }
+        });
+
         const form = document.getElementById("ticket-form");
         form.addEventListener("input", (e) => {
           const name = e.target.closest("[data-field]")?.dataset.field;
@@ -1073,21 +1101,24 @@
             arguments: { sys_id: button.dataset.id },
           });
           const payload = parsePayload(result);
-          const binary = atob(payload.dataBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-          }
-          const url = URL.createObjectURL(
-            new Blob([bytes], {
-              type: payload.contentType || "application/octet-stream",
-            }),
+          const fileName = (button.dataset.name || "attachment").replace(
+            /[\\/]/g,
+            "_",
           );
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = button.dataset.name || "attachment";
-          link.click();
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          const downloadResult = await app.downloadFile([
+            {
+              type: "resource",
+              resource: {
+                uri: `file:///${encodeURIComponent(fileName)}`,
+                mimeType:
+                  payload.contentType || "application/octet-stream",
+                blob: payload.dataBase64,
+              },
+            },
+          ]);
+          if (downloadResult?.isError) {
+            throw new Error("The host denied the file download");
+          }
         } catch (err) {
           showBanner("error", err.message || "Failed to download attachment.");
         } finally {
