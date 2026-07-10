@@ -513,6 +513,10 @@ export function buildTicketQuery(filters: TicketFilters = {}): string {
   addMatch(conditions, "category", filters.category);
   addMatch(conditions, "caller_id.name", filters.caller);
   addMatch(conditions, "assigned_to.name", filters.assignedTo);
+  if (filters.assignedToMe) {
+    // This static server-side expression is not derived from user input.
+    conditions.push("assigned_to=javascript:gs.getUserID()");
+  }
   addMatch(conditions, "assignment_group.name", filters.assignmentGroup);
   addMatch(conditions, "cmdb_ci.name", filters.configurationItem);
   addMatch(conditions, "opened_by.name", filters.openedBy);
@@ -623,41 +627,6 @@ async function resolveChoiceFilterLabels(
   return resolved;
 }
 
-async function getCurrentUserSysId(
-  headers: Record<string, string>,
-  instanceUrl: string,
-): Promise<string> {
-  const params = new URLSearchParams({
-    sysparm_fields: "sys_id",
-    sysparm_display_value: "false",
-  });
-  const endpoints = [
-    `${instanceUrl}/api/now/table/sys_user/me?${params}`,
-    `${instanceUrl}/api/now/ui/user/current_user`,
-  ];
-  for (const url of endpoints) {
-    const response = await fetch(url, { method: "GET", headers });
-    if (!response.ok) continue;
-    const data = await response.json();
-    const result = Array.isArray(data.result) ? data.result[0] : data.result;
-    const candidates = [
-      result?.sys_id,
-      result?.user_id,
-      result?.user?.sys_id,
-      result?.user?.user_id,
-      result?.user?.value,
-      result?.value,
-    ];
-    const sysId = candidates
-      .map((candidate) => normalizeValue(candidate).value)
-      .find(looksLikeSysId);
-    if (sysId) return sysId;
-  }
-  throw new Error(
-    "Could not identify the authenticated ServiceNow user for the “my tickets” filter",
-  );
-}
-
 /**
  * Discover task-derived records using user-facing filters. ServiceNow applies
  * the authenticated user's table and record ACLs to this request.
@@ -689,6 +658,7 @@ export async function discoverTickets(
   }
   const queryFilters: TicketFilters = {
     ...filters,
+    assignedToMe: filters.assignedToMe || selfReferences.length > 0,
     assignedTo:
       namedAssignees.length === 0
         ? undefined
@@ -701,13 +671,6 @@ export async function discoverTickets(
     headers,
     instanceUrl,
   );
-  if (filters.assignedToMe || selfReferences.length > 0) {
-    const currentUserSysId = await getCurrentUserSysId(headers, instanceUrl);
-    resolvedFilters.additionalFilters = {
-      ...resolvedFilters.additionalFilters,
-      assigned_to: currentUserSysId,
-    };
-  }
   const query = buildTicketQuery(resolvedFilters);
   const orderField =
     options.orderBy === "opened_at"
