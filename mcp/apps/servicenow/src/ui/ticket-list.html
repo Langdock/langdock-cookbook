@@ -74,7 +74,7 @@
         const returnHtml = utf8ToBase64(document.documentElement.outerHTML);
         const withReturnData = html.replace(
           "</head>",
-          `<script>window.RETURN_TO_TICKET_LIST = "${returnHtml}";</script></head>`,
+          `<script>window.RETURN_TO_TICKET_LIST = "${returnHtml}";<\/script></head>`,
         );
         document.open();
         document.write(withReturnData);
