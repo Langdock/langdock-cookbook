@@ -2,6 +2,29 @@ import { createHash } from "node:crypto";
 
 import { getInstanceUrl } from "../utils/getInstanceUrl.js";
 
+const TABLE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+const SYS_ID_PATTERN = /^[0-9a-f]{32}$/i;
+
+function validateTableName(table: string): string {
+  const normalized = table.trim();
+  if (!TABLE_NAME_PATTERN.test(normalized)) {
+    throw new Error(`Invalid ServiceNow table name "${table}"`);
+  }
+  return normalized;
+}
+
+function validateSysId(sysId: string, label = "sys_id"): string {
+  const normalized = sysId.trim();
+  if (!SYS_ID_PATTERN.test(normalized)) {
+    throw new Error(`${label} must be a 32-character ServiceNow sys_id`);
+  }
+  return normalized;
+}
+
+function tablePath(table: string): string {
+  return encodeURIComponent(validateTableName(table));
+}
+
 export async function submitForm(
   table: string,
   data: Record<string, unknown>,
@@ -9,7 +32,7 @@ export async function submitForm(
   extraHeaders: Record<string, string> = {},
 ): Promise<unknown> {
   const instanceUrl = getInstanceUrl();
-  const url = `${instanceUrl}/api/now/table/${table}`;
+  const url = `${instanceUrl}/api/now/table/${tablePath(table)}`;
 
   const response = await fetch(url, {
     method: "POST",
@@ -201,7 +224,7 @@ async function getTableHierarchy(
   headers: Record<string, string>,
   instanceUrl: string,
 ): Promise<string[]> {
-  const tables: string[] = [table];
+  const tables: string[] = [validateTableName(table)];
 
   try {
     // Query sys_db_object to get table hierarchy
@@ -235,14 +258,15 @@ async function getTableHierarchy(
       if (!parentValue) break;
 
       // Need to resolve the sys_id to table name
-      const parentUrl = `${instanceUrl}/api/now/table/sys_db_object/${parentValue}`;
+      if (!SYS_ID_PATTERN.test(String(parentValue))) break;
+      const parentUrl = `${instanceUrl}/api/now/table/sys_db_object/${encodeURIComponent(String(parentValue))}`;
       const parentResponse = await fetch(parentUrl, { method: "GET", headers });
       if (!parentResponse.ok) break;
 
       const parentData = await parentResponse.json();
-      const parentName = parentData.result?.name;
+      const parentName = String(parentData.result?.name || "").trim();
 
-      if (!parentName || tables.includes(parentName)) break;
+      if (!TABLE_NAME_PATTERN.test(parentName) || tables.includes(parentName)) break;
 
       tables.push(parentName);
       currentTable = parentName;
@@ -260,9 +284,10 @@ export async function getFormFields(
   extraHeaders: Record<string, string> = {},
 ): Promise<FormSchema> {
   const instanceUrl = getInstanceUrl();
+  const validatedTable = validateTableName(table);
   const cacheKey = formSchemaCacheKey(
     instanceUrl,
-    table,
+    validatedTable,
     accessToken,
     extraHeaders,
   );
@@ -277,7 +302,11 @@ export async function getFormFields(
   };
 
   // Get table hierarchy to include inherited fields
-  const tableHierarchy = await getTableHierarchy(table, headers, instanceUrl);
+  const tableHierarchy = await getTableHierarchy(
+    validatedTable,
+    headers,
+    instanceUrl,
+  );
 
   // Fetch field definitions from sys_dictionary for all tables in hierarchy
   const dictUrl = `${instanceUrl}/api/now/table/sys_dictionary`;
@@ -334,10 +363,12 @@ export async function getFormFields(
   > = {};
   if (choiceFields.length > 0) {
     const choiceUrl = `${instanceUrl}/api/now/table/sys_choice`;
-    // Query choices for all tables in hierarchy
+    // Query choices for all tables in hierarchy. `name` is the table-name
+    // column on sys_choice; `table` is not.
+    const choiceLanguage = process.env.SERVICENOW_LANGUAGE?.trim() || "en";
     const choiceParams = new URLSearchParams({
-      sysparm_query: `tableIN${tableHierarchy.join(",")}^elementIN${choiceFields.join(",")}^inactive=false`,
-      sysparm_fields: "element,label,value,sequence",
+      sysparm_query: `nameIN${tableHierarchy.join(",")}^elementIN${choiceFields.join(",")}^inactive=false^language=${escapeQueryValue(choiceLanguage)}`,
+      sysparm_fields: "name,element,label,value,sequence",
       sysparm_limit: "500",
     });
 
@@ -348,7 +379,16 @@ export async function getFormFields(
 
     if (choiceResponse.ok) {
       const choiceData = await choiceResponse.json();
-      for (const ch of choiceData.result || []) {
+      const choiceRows = [...(choiceData.result || [])].sort(
+        (a: Record<string, unknown>, b: Record<string, unknown>) =>
+          tableHierarchy.indexOf(String(a.name)) -
+          tableHierarchy.indexOf(String(b.name)),
+      );
+      const seenChoices = new Set<string>();
+      for (const ch of choiceRows) {
+        const choiceKey = `${ch.element}\u0000${ch.value}`;
+        if (seenChoices.has(choiceKey)) continue;
+        seenChoices.add(choiceKey);
         if (!choicesByField[ch.element]) {
           choicesByField[ch.element] = [];
         }
@@ -419,7 +459,7 @@ export async function getFormFields(
   fields.sort((a, b) => a.label.localeCompare(b.label));
 
   const schema = {
-    table,
+    table: validatedTable,
     fields,
     hierarchy: tableHierarchy,
     isTaskTable: tableHierarchy.includes("task"),
@@ -520,7 +560,7 @@ function buildHeaders(
 
 /** A 32-char hex string is a ServiceNow sys_id. */
 function looksLikeSysId(value: string): boolean {
-  return /^[0-9a-f]{32}$/i.test(value.trim());
+  return SYS_ID_PATTERN.test(value.trim());
 }
 
 /**
@@ -580,10 +620,14 @@ const TICKET_FIELDS = [
 ].join(",");
 
 function escapeQueryValue(value: string): string {
-  if (/[\^\r\n]/.test(value)) {
+  const normalized = value.trim();
+  if (/[\^\r\n\u0000]/.test(normalized)) {
     throw new Error("Filter values cannot contain ^ or line breaks");
   }
-  return value.trim();
+  if (/^javascript\s*:/i.test(normalized)) {
+    throw new Error("Filter values cannot contain ServiceNow JavaScript expressions");
+  }
+  return normalized;
 }
 
 function validateFilterField(field: string): string {
@@ -603,6 +647,9 @@ function addMatch(
     .map((item) => escapeQueryValue(item))
     .filter(Boolean);
   if (values.length === 0) return;
+  if (values.length > 1 && values.some((item) => item.includes(","))) {
+    throw new Error("Comma-containing filter values cannot be combined in an array");
+  }
   conditions.push(
     values.length === 1
       ? `${field}=${values[0]}`
@@ -628,6 +675,9 @@ function buildRelatedUserMatches(
     .map((item) => escapeQueryValue(item))
     .filter(Boolean);
   if (values.length === 0) return [];
+  if (values.length > 1 && values.some((item) => item.includes(","))) {
+    throw new Error("Comma-containing person filters cannot be combined in an array");
+  }
   const operator = values.length === 1 ? "=" : "IN";
   const joined = values.join(",");
   return ["caller_id", "opened_by", "assigned_to"].map(
@@ -731,53 +781,54 @@ const CHOICE_FILTER_FIELDS = [
   "severity",
 ] as const;
 
+interface ResolvedChoiceFilters {
+  queryFilters: TicketFilters;
+  requested: Partial<Record<(typeof CHOICE_FILTER_FIELDS)[number], string[]>>;
+}
+
 /**
- * The Table API expects stored choice values (for example, `1`) while people
- * naturally use labels (for example, `1 - Critical`). Resolve matching labels
- * across the instance's task-related choice definitions before querying.
+ * Choice values such as task state are not consistent across child tables.
+ * Leave them out of the base task query and verify each record's raw value and
+ * display label after retrieval to avoid cross-table false positives.
  */
-async function resolveChoiceFilterLabels(
+function separateChoiceFilters(
   filters: TicketFilters,
-  headers: Record<string, string>,
-  instanceUrl: string,
-): Promise<TicketFilters> {
-  const requested = CHOICE_FILTER_FIELDS.flatMap((field) => {
-    const value = filters[field];
-    return value == null ? [] : Array.isArray(value) ? value : [value];
-  });
-  if (requested.length === 0) return filters;
-
-  const params = new URLSearchParams({
-    sysparm_query: `elementIN${CHOICE_FILTER_FIELDS.join(",")}^inactive=false`,
-    sysparm_fields: "element,label,value",
-    sysparm_limit: "1000",
-  });
-  const response = await fetch(
-    `${instanceUrl}/api/now/table/sys_choice?${params}`,
-    { method: "GET", headers },
-  );
-  if (!response.ok) return filters;
-
-  const data = await response.json();
-  const choices = (data.result || []) as Array<Record<string, unknown>>;
-  const resolved: TicketFilters = { ...filters };
+): ResolvedChoiceFilters {
+  const queryFilters = { ...filters };
+  const requested: ResolvedChoiceFilters["requested"] = {};
   for (const field of CHOICE_FILTER_FIELDS) {
-    const input = filters[field];
-    if (input == null) continue;
-    const values = Array.isArray(input) ? input : [input];
-    resolved[field] = values.flatMap((value) => {
-      const normalized = value.trim().toLocaleLowerCase();
-      const matches = choices
-        .filter(
-          (choice) =>
-            String(choice.element) === field &&
-            String(choice.label).trim().toLocaleLowerCase() === normalized,
-        )
-        .map((choice) => String(choice.value));
-      return matches.length > 0 ? matches : [value];
-    });
+    const value = filters[field];
+    if (value == null) continue;
+    requested[field] = Array.isArray(value) ? value : [value];
+    queryFilters[field] = undefined;
   }
-  return resolved;
+  return { queryFilters, requested };
+}
+
+export function matchesChoiceFilters(
+  ticket: TicketSummary,
+  requested: ResolvedChoiceFilters["requested"],
+): boolean {
+  const ticketFields: Record<
+    (typeof CHOICE_FILTER_FIELDS)[number],
+    { raw: string; display: string }
+  > = {
+    state: { raw: ticket.stateValue, display: ticket.state },
+    priority: { raw: ticket.priorityValue, display: ticket.priority },
+    impact: { raw: ticket.impactValue, display: ticket.impact },
+    urgency: { raw: ticket.urgencyValue, display: ticket.urgency },
+    severity: { raw: ticket.severityValue, display: ticket.severity },
+  };
+  return CHOICE_FILTER_FIELDS.every((field) => {
+    const values = requested[field];
+    if (!values?.length) return true;
+    const raw = ticketFields[field].raw.trim().toLocaleLowerCase();
+    const display = ticketFields[field].display.trim().toLocaleLowerCase();
+    return values.some((value) => {
+      const normalized = value.trim().toLocaleLowerCase();
+      return normalized === raw || normalized === display;
+    });
+  });
 }
 
 /**
@@ -793,7 +844,12 @@ export async function discoverTickets(
     sortBy?: TicketSortField;
     sortDirection?: "asc" | "desc";
   } = {},
-): Promise<{ tickets: TicketSummary[]; query: string }> {
+): Promise<{
+  tickets: TicketSummary[];
+  query: string;
+  scanned: number;
+  truncated: boolean;
+}> {
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
   const assignedToValues =
@@ -823,12 +879,8 @@ export async function discoverTickets(
           ? namedAssignees
           : namedAssignees[0],
   };
-  const resolvedFilters = await resolveChoiceFilterLabels(
-    queryFilters,
-    headers,
-    instanceUrl,
-  );
-  const query = buildTicketQuery(resolvedFilters);
+  const resolvedChoices = separateChoiceFilters(queryFilters);
+  const query = buildTicketQuery(resolvedChoices.queryFilters);
   const sortFields: Record<TicketSortField, string> = {
     priority: "priority",
     severity: "severity",
@@ -850,29 +902,72 @@ export async function discoverTickets(
     orderQuery = `${operator}${sortFields[options.sortBy]}^ORDERBYsys_id`;
   } else {
     // Triage default: most important tickets first, then the oldest opened.
-    orderQuery = "ORDERBYpriority^ORDERBYimpact^ORDERBYopened_at";
+    orderQuery =
+      "ORDERBYpriority^ORDERBYimpact^ORDERBYopened_at^ORDERBYsys_id";
   }
-  const params = new URLSearchParams({
-    sysparm_fields: TICKET_FIELDS,
-    sysparm_display_value: "all",
-    sysparm_exclude_reference_link: "true",
-    sysparm_limit: String(Math.min(Math.max(options.limit ?? 25, 1), 100)),
-    sysparm_query: [query, orderQuery].filter(Boolean).join("^"),
-  });
-  const response = await fetch(`${instanceUrl}/api/now/table/task?${params}`, {
-    method: "GET",
-    headers,
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+  const requestedLimit = Math.min(Math.max(options.limit ?? 25, 1), 100);
+  const needsChoiceVerification = Object.keys(resolvedChoices.requested).length > 0;
+  const configuredScanLimit = Number.parseInt(
+    process.env.SERVICENOW_DISCOVERY_SCAN_LIMIT || "",
+    10,
+  );
+  const maxCandidateRows = Math.max(
+    requestedLimit,
+    Number.isFinite(configuredScanLimit) && configuredScanLimit > 0
+      ? configuredScanLimit
+      : 5000,
+  );
+  const tickets: TicketSummary[] = [];
+  let offset = 0;
+  let truncated = false;
+
+  while (tickets.length < requestedLimit) {
+    const pageSize = needsChoiceVerification
+      ? Math.min(100, maxCandidateRows - offset)
+      : requestedLimit;
+    if (pageSize <= 0) {
+      truncated = true;
+      break;
+    }
+    const params = new URLSearchParams({
+      sysparm_fields: TICKET_FIELDS,
+      sysparm_display_value: "all",
+      sysparm_exclude_reference_link: "true",
+      sysparm_limit: String(pageSize),
+      sysparm_offset: String(offset),
+      sysparm_query: [query, orderQuery].filter(Boolean).join("^"),
+    });
+    const response = await fetch(`${instanceUrl}/api/now/table/task?${params}`, {
+      method: "GET",
+      headers,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+    }
+    const data = await response.json();
+    const rows = (data.result || []) as Array<Record<string, unknown>>;
+    const summaries = rows.map((row) => toTicketSummary(row, instanceUrl));
+    tickets.push(
+      ...summaries.filter(
+          (ticket) =>
+            !needsChoiceVerification ||
+            matchesChoiceFilters(ticket, resolvedChoices.requested),
+        ),
+    );
+    offset += rows.length;
+    if (rows.length < pageSize) break;
+    if (needsChoiceVerification && offset >= maxCandidateRows) {
+      truncated = true;
+      break;
+    }
   }
-  const data = await response.json();
+
   return {
-    tickets: (data.result || []).map((row: Record<string, unknown>) =>
-      toTicketSummary(row, instanceUrl),
-    ),
+    tickets: tickets.slice(0, requestedLimit),
     query,
+    scanned: offset,
+    truncated,
   };
 }
 
@@ -889,17 +984,18 @@ export async function getRecord(
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
   const id = idOrNumber.trim();
+  const validatedTable = validateTableName(table);
 
   let url: string;
   if (looksLikeSysId(id)) {
-    url = `${instanceUrl}/api/now/table/${table}/${id}?sysparm_display_value=all`;
+    url = `${instanceUrl}/api/now/table/${tablePath(validatedTable)}/${validateSysId(id)}?sysparm_display_value=all`;
   } else {
     const params = new URLSearchParams({
-      sysparm_query: `number=${id}`,
+      sysparm_query: `number=${escapeQueryValue(id)}`,
       sysparm_display_value: "all",
       sysparm_limit: "1",
     });
-    url = `${instanceUrl}/api/now/table/${table}?${params}`;
+    url = `${instanceUrl}/api/now/table/${tablePath(validatedTable)}?${params}`;
   }
 
   const response = await fetch(url, { method: "GET", headers });
@@ -914,7 +1010,7 @@ export async function getRecord(
     throw new Error(`No ${table} record found for "${idOrNumber}"`);
   }
 
-  return toTicketRecord(table, record as Record<string, unknown>);
+  return toTicketRecord(validatedTable, record as Record<string, unknown>);
 }
 
 /**
@@ -929,7 +1025,9 @@ export async function updateRecord(
 ): Promise<TicketRecord> {
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
-  const url = `${instanceUrl}/api/now/table/${table}/${sysId}?sysparm_display_value=all`;
+  const validatedTable = validateTableName(table);
+  const validatedSysId = validateSysId(sysId);
+  const url = `${instanceUrl}/api/now/table/${tablePath(validatedTable)}/${validatedSysId}?sysparm_display_value=all`;
 
   const response = await fetch(url, {
     method: "PATCH",
@@ -943,7 +1041,7 @@ export async function updateRecord(
   }
 
   const result = await response.json();
-  return toTicketRecord(table, result.result as Record<string, unknown>);
+  return toTicketRecord(validatedTable, result.result as Record<string, unknown>);
 }
 
 /**
@@ -958,9 +1056,11 @@ export async function getActivity(
 ): Promise<ActivityEntry[]> {
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
+  const validatedTable = validateTableName(table);
+  const validatedSysId = validateSysId(sysId);
   const url = `${instanceUrl}/api/now/table/sys_journal_field`;
   const params = new URLSearchParams({
-    sysparm_query: `name=${table}^element_id=${sysId}^elementINcomments,work_notes^ORDERBYsys_created_on`,
+    sysparm_query: `name=${validatedTable}^element_id=${validatedSysId}^elementINcomments,work_notes^ORDERBYsys_created_on`,
     sysparm_fields: "element,value,sys_created_on,sys_created_by",
     sysparm_display_value: "true",
     sysparm_limit: "200",
@@ -991,8 +1091,10 @@ export async function getAttachments(
   extraHeaders: Record<string, string> = {},
 ): Promise<TicketAttachment[]> {
   const instanceUrl = getInstanceUrl();
+  const validatedTable = validateTableName(table);
+  const validatedSysId = validateSysId(sysId);
   const params = new URLSearchParams({
-    sysparm_query: `table_name=${escapeQueryValue(table)}^table_sys_id=${escapeQueryValue(sysId)}^ORDERBYDESCsys_created_on`,
+    sysparm_query: `table_name=${validatedTable}^table_sys_id=${validatedSysId}^ORDERBYDESCsys_created_on`,
     sysparm_fields:
       "sys_id,file_name,content_type,size_bytes,sys_created_on,sys_created_by",
     sysparm_display_value: "true",
@@ -1032,9 +1134,11 @@ export async function uploadAttachment(
     throw new Error("Attachments are limited to 8 MB");
   }
   const instanceUrl = getInstanceUrl();
+  const validatedTable = validateTableName(table);
+  const validatedSysId = validateSysId(sysId);
   const params = new URLSearchParams({
-    table_name: table,
-    table_sys_id: sysId,
+    table_name: validatedTable,
+    table_sys_id: validatedSysId,
     file_name: fileName,
   });
   const response = await fetch(
@@ -1068,13 +1172,23 @@ export async function uploadAttachment(
 
 /** Download an attachment as base64 so an MCP App can save it locally. */
 export async function downloadAttachment(
+  table: string,
+  tableSysId: string,
   sysId: string,
   accessToken: string,
   extraHeaders: Record<string, string> = {},
 ): Promise<{ dataBase64: string; contentType: string }> {
   const instanceUrl = getInstanceUrl();
+  const validatedAttachmentSysId = validateSysId(sysId, "attachment sys_id");
+  await assertAttachmentBelongsToTicket(
+    table,
+    tableSysId,
+    validatedAttachmentSysId,
+    accessToken,
+    extraHeaders,
+  );
   const response = await fetch(
-    `${instanceUrl}/api/now/attachment/${encodeURIComponent(sysId)}/file`,
+    `${instanceUrl}/api/now/attachment/${validatedAttachmentSysId}/file`,
     {
       method: "GET",
       headers: {
@@ -1103,13 +1217,23 @@ export async function downloadAttachment(
 
 /** Delete an attachment from ServiceNow. */
 export async function deleteAttachment(
+  table: string,
+  tableSysId: string,
   sysId: string,
   accessToken: string,
   extraHeaders: Record<string, string> = {},
 ): Promise<void> {
   const instanceUrl = getInstanceUrl();
+  const validatedAttachmentSysId = validateSysId(sysId, "attachment sys_id");
+  await assertAttachmentBelongsToTicket(
+    table,
+    tableSysId,
+    validatedAttachmentSysId,
+    accessToken,
+    extraHeaders,
+  );
   const response = await fetch(
-    `${instanceUrl}/api/now/attachment/${encodeURIComponent(sysId)}`,
+    `${instanceUrl}/api/now/attachment/${validatedAttachmentSysId}`,
     {
       method: "DELETE",
       headers: {
@@ -1122,5 +1246,47 @@ export async function deleteAttachment(
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Attachment deletion failed (${response.status}): ${errorText}`);
+  }
+}
+
+async function assertAttachmentBelongsToTicket(
+  table: string,
+  tableSysId: string,
+  attachmentSysId: string,
+  accessToken: string,
+  extraHeaders: Record<string, string>,
+): Promise<void> {
+  const instanceUrl = getInstanceUrl();
+  const validatedTable = validateTableName(table);
+  const validatedTableSysId = validateSysId(tableSysId, "ticket sys_id");
+  const validatedAttachmentSysId = validateSysId(
+    attachmentSysId,
+    "attachment sys_id",
+  );
+  const params = new URLSearchParams({
+    sysparm_fields: "table_name,table_sys_id",
+    sysparm_display_value: "false",
+  });
+  const response = await fetch(
+    `${instanceUrl}/api/now/table/sys_attachment/${validatedAttachmentSysId}?${params}`,
+    {
+      method: "GET",
+      headers: buildHeaders(accessToken, extraHeaders),
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to verify attachment (${response.status}): ${errorText}`,
+    );
+  }
+  const data = await response.json();
+  const attachmentTable = normalizeValue(data.result?.table_name).value;
+  const attachmentTableSysId = normalizeValue(data.result?.table_sys_id).value;
+  if (
+    attachmentTable !== validatedTable ||
+    attachmentTableSysId !== validatedTableSysId
+  ) {
+    throw new Error("Attachment does not belong to the displayed ticket");
   }
 }

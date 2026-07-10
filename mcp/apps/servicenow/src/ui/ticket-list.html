@@ -37,6 +37,7 @@
       .description { margin: 6px 0; font-size: 15px; font-weight: 500; }
       .meta { color: var(--muted); font-size: 12px; }
       .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; }
+      .warning { margin: 0 0 16px; padding: 10px 12px; color: #92400e; border: 1px solid #fde68a; border-radius: 8px; background: #fffbeb; }
       .error { color: #b91c1c; margin-top: 10px; }
     </style>
   </head>
@@ -233,8 +234,11 @@
       function render(data) {
         const tickets = data?.tickets || [];
         const title = data?.title || "ServiceNow tickets";
+        const warning = data?.warning
+          ? `<div class="warning" role="status">${escapeHtml(data.warning)}</div>`
+          : "";
         if (!tickets.length) {
-          content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">No tickets matched these filters.</p><div class="empty">Try broadening the state, assignment, or date filters.</div>`;
+          content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">No tickets matched these filters.</p>${warning}<div class="empty">Try broadening the state, assignment, or date filters.</div>`;
           return;
         }
         const filters = (data.filterSummary || [])
@@ -253,7 +257,7 @@
               `${label ? `<div class="group">${escapeHtml(label)} · ${groupTickets.length}</div>` : ""}${groupTickets.map(ticketHtml).join("")}`,
           )
           .join("");
-        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}<div id="error" class="error" role="alert"></div>`;
+        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${warning}${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}<div id="error" class="error" role="alert"></div>`;
         content.querySelectorAll(".ticket").forEach((card) => {
           card.addEventListener("click", (event) => {
             if (event.target.closest(".open-label")) return;

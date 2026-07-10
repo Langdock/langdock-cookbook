@@ -191,8 +191,16 @@ app.get("/health", (_req, res) => res.json({ status: "ok" }));
 // MCP Server Factory
 // ---------------------------------------------------------------------------
 
-function formatTicketResults(tickets: TicketSummary[]): string {
-  if (tickets.length === 0) return "No ServiceNow tickets matched the filters.";
+function formatTicketResults(
+  tickets: TicketSummary[],
+  warning?: string,
+): string {
+  if (tickets.length === 0) {
+    return [
+      "No ServiceNow tickets matched the filters.",
+      warning,
+    ].filter(Boolean).join("\n\n");
+  }
   const escapeMarkdown = (value: string): string =>
     value.replace(/[\\[\]]/g, "\\$&").replace(/\s+/g, " ").trim();
   const rows = tickets.map((ticket) => {
@@ -209,7 +217,8 @@ function formatTicketResults(tickets: TicketSummary[]): string {
     ].filter(Boolean);
     return `- [${label}](${ticket.recordUrl})${details.length ? ` — ${details.join("; ")}` : ""}`;
   });
-  return `Found ${tickets.length} ServiceNow ticket${tickets.length === 1 ? "" : "s"}:\n\n${rows.join("\n")}`;
+  const summary = `Found ${tickets.length} ServiceNow ticket${tickets.length === 1 ? "" : "s"}:\n\n${rows.join("\n")}`;
+  return [summary, warning].filter(Boolean).join("\n\n");
 }
 
 function createMcpServer(
@@ -593,11 +602,15 @@ function createMcpServer(
             ? "desc"
             : "asc"
           : null;
+        const warning = result.truncated
+          ? `Choice filtering reached its ${result.scanned}-record scan limit. These results are accurate but may be incomplete; add an assignment, date, active, or text filter to narrow the search.`
+          : undefined;
         const renderData = {
           title: "ServiceNow tickets",
           tickets: result.tickets,
           filterSummary,
           groupBy: group_by || "none",
+          warning,
           sortLabel: order_by
             ? `${order_by.replaceAll("_", " ")} ${order_direction || defaultDirection}`
             : "priority, impact, oldest opened",
@@ -615,7 +628,7 @@ function createMcpServer(
           content: [
             {
               type: "text" as const,
-              text: formatTicketResults(result.tickets),
+              text: formatTicketResults(result.tickets, warning),
             },
             {
               type: "resource" as const,
@@ -803,42 +816,8 @@ function createMcpServer(
     },
   );
 
-  server.registerTool(
-    "list_attachments",
-    {
-      title: "List Ticket Attachments",
-      description: "List files attached to a ServiceNow ticket.",
-      inputSchema: {
-        table: z.string().describe("The ticket's concrete ServiceNow table"),
-        sys_id: z.string().describe("The ticket sys_id"),
-      },
-    },
-    async ({ table, sys_id }) => {
-      try {
-        const attachments = await getAttachments(
-          table,
-          sys_id,
-          token,
-          customHeaders,
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ attachments }, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: String(error) }],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  server.registerTool(
+  registerAppTool(
+    server,
     "upload_attachment",
     {
       title: "Upload Ticket Attachment",
@@ -857,6 +836,13 @@ function createMcpServer(
           .min(1)
           .max(12_000_000)
           .describe("Base64-encoded file bytes"),
+      },
+      annotations: { openWorldHint: true },
+      _meta: {
+        ui: {
+          resourceUri: ticketResourceUri,
+          visibility: ["app"],
+        },
       },
     },
     async ({ table, sys_id, file_name, content_type, data_base64 }) => {
@@ -893,19 +879,31 @@ function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "download_attachment",
     {
       title: "Download Ticket Attachment",
       description:
         "Download a ServiceNow attachment of up to 8 MB. Returns base64 file data.",
       inputSchema: {
+        table: z.string().describe("The ticket's concrete ServiceNow table"),
+        table_sys_id: z.string().describe("The ticket sys_id"),
         sys_id: z.string().describe("The attachment sys_id"),
       },
+      annotations: { readOnlyHint: true },
+      _meta: {
+        ui: {
+          resourceUri: ticketResourceUri,
+          visibility: ["app"],
+        },
+      },
     },
-    async ({ sys_id }) => {
+    async ({ table, table_sys_id, sys_id }) => {
       try {
         const attachment = await downloadAttachment(
+          table,
+          table_sys_id,
           sys_id,
           token,
           customHeaders,
@@ -927,7 +925,8 @@ function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "delete_attachment",
     {
       title: "Delete Ticket Attachment",
@@ -937,10 +936,23 @@ function createMcpServer(
         table_sys_id: z.string().describe("The ticket sys_id"),
         sys_id: z.string().describe("The attachment sys_id"),
       },
+      annotations: { destructiveHint: true },
+      _meta: {
+        ui: {
+          resourceUri: ticketResourceUri,
+          visibility: ["app"],
+        },
+      },
     },
     async ({ table, table_sys_id, sys_id }) => {
       try {
-        await deleteAttachment(sys_id, token, customHeaders);
+        await deleteAttachment(
+          table,
+          table_sys_id,
+          sys_id,
+          token,
+          customHeaders,
+        );
         const attachments = await getAttachments(
           table,
           table_sys_id,

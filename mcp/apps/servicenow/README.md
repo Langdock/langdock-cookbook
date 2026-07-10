@@ -74,6 +74,10 @@ pnpm install
 export SERVICENOW_INSTANCE="dev12345"            # subdomain or full host (dev12345.service-now.com)
 export SERVICENOW_CLIENT_ID="your-client-id"
 export BASE_URL="http://localhost:3000"          # public URL; must match the OAuth redirect URL
+# Optional — language used for form choice options (default: en):
+# export SERVICENOW_LANGUAGE="en"
+# Optional — maximum records inspected for cross-table choice filters:
+# export SERVICENOW_DISCOVERY_SCAN_LIMIT="5000"
 # Optional — only for confidential OAuth clients:
 # export SERVICENOW_CLIENT_SECRET="your-client-secret"
 ```
@@ -94,6 +98,8 @@ The server starts on port `3000` and exposes the MCP endpoint at `/mcp`.
 | `SERVICENOW_CLIENT_ID` | Yes | OAuth client ID from the ServiceNow Application Registry |
 | `BASE_URL` | Yes | Public base URL of this server; used to build the OAuth callback URL |
 | `SERVICENOW_CLIENT_SECRET` | No | OAuth client secret — set only for confidential clients |
+| `SERVICENOW_LANGUAGE` | No | Language used for form choice options (default: `en`) |
+| `SERVICENOW_DISCOVERY_SCAN_LIMIT` | No | Maximum candidate records inspected for cross-table choice filters (default: `5000`) |
 | `PORT` | No | Port to listen on (default: `3000`) |
 
 ## Endpoints
@@ -163,6 +169,11 @@ such as `1 - Critical` are accepted as well as their stored values.
 “My tickets” searches default to active records unless a state or explicit
 `active` value is supplied.
 
+Choice filters are checked against each record's raw value and display label,
+so table-specific state values do not get mixed together. On very large result
+sets, discovery reports when it reaches `SERVICENOW_DISCOVERY_SCAN_LIMIT`;
+adding an assignment, date, active, or text filter narrows that scan.
+
 For requests such as “tickets for ITIL User” where the user’s role is not
 specified, use `related_user`. It matches the person across caller, opened-by,
 and assignee fields while preserving all other filters. Use `caller`,
@@ -189,6 +200,9 @@ active filters.
 
 Open an existing record as an **interactive ticket panel** inside the client. Fetches the record, its field schema, attachments, and comment/work-note activity, then renders an editable panel. Users can edit fields, change state, upload/download/delete files up to 8 MB, and post comments/work notes directly in the frame.
 
+Attachment operations are available only inside the interactive panel and are
+not exposed as model-callable MCP tools.
+
 **Parameters:** `id` (required) — a `sys_id` or number; `table` (optional) —
 the tool detects the concrete task type when it is omitted.
 
@@ -210,16 +224,6 @@ Update field values on an existing record via `PATCH`. Called by the ticket pane
 Append a **comment** (customer-visible) or **work note** (internal) to a record's activity stream, and return the refreshed activity. Called by the ticket panel's composer.
 
 **Parameters:** `table` (required), `sys_id` (required), `field` (`comments` | `work_notes`), `text` (required).
-
-### Attachment tools
-
-- `list_attachments` lists files associated with a ticket.
-- `upload_attachment` uploads base64 file data to a ticket (maximum 8 MB).
-- `download_attachment` downloads an attachment as base64 file data (maximum 8 MB in-chat).
-- `delete_attachment` permanently removes an attachment.
-
-The interactive ticket panel calls these tools directly from its attachment
-section.
 
 ## Resources
 

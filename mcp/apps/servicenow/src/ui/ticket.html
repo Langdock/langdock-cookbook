@@ -1128,7 +1128,11 @@
         try {
           const result = await app.callServerTool({
             name: "download_attachment",
-            arguments: { sys_id: button.dataset.id },
+            arguments: {
+              table: ticket.table,
+              table_sys_id: ticket.sysId,
+              sys_id: button.dataset.id,
+            },
           });
           const payload = parsePayload(result);
           const fileName = (button.dataset.name || "attachment").replace(
