@@ -1,8 +1,15 @@
 # servicenow-mcp-server
 
-An MCP (Model Context Protocol) server for **ServiceNow** with an interactive record-creation UI.
+An MCP (Model Context Protocol) server for **ServiceNow** with interactive, in-chat UI for both **creating** and **working** records.
 
-It exposes tools to inspect a ServiceNow table's fields, render an editable form right inside the client (optionally pre-filled from the conversation), and submit the result as a new record. The server acts as an OAuth 2.0 proxy with Dynamic Client Registration (DCR): MCP clients authenticate through this server, which delegates user sign-in to your ServiceNow instance and forwards the ServiceNow access token on every API call.
+It can:
+
+- Inspect a ServiceNow table's fields and render an editable **creation form** right inside the client (optionally pre-filled from the conversation), then submit it as a new record.
+- **Open an existing record** (e.g. an incident) as an interactive **ticket panel** inside the client, where users can edit fields, change state, and add comments or work notes — each change saved straight back to ServiceNow without leaving the chat.
+
+The server acts as an OAuth 2.0 proxy with Dynamic Client Registration (DCR): MCP clients authenticate through this server, which delegates user sign-in to your ServiceNow instance and forwards the ServiceNow access token on every API call.
+
+The ticket panel is **generic but ticket-aware**: it works for any table, and for tables that extend `task` (incident, `sc_task`, change, problem, …) it adds ticket-specific niceties — a state badge, an activity/journal stream, and a comment/work-note composer.
 
 ## OAuth Flow
 
@@ -128,11 +135,46 @@ Submit a record to a ServiceNow table via the Table API.
 
 **Parameters:** `table` (required), `data` (required) — the field values for the new record.
 
+### `get_record`
+
+Fetch a single existing record by `sys_id` or by its human-readable number (e.g. `INC0010023`). Values come back with both raw values and display labels.
+
+**Parameters:** `table` (required), `id` (required) — a `sys_id` or number.
+
+### `render_ticket`
+
+Open an existing record as an **interactive ticket panel** inside the client. Fetches the record, its field schema, and its comment/work-note activity, then renders an editable panel. Users can edit fields, change state, and post comments/work notes directly in the frame.
+
+**Parameters:** `table` (required), `id` (required) — a `sys_id` or number.
+
+```json
+{
+  "table": "incident",
+  "id": "INC0010023"
+}
+```
+
+### `update_record`
+
+Update field values on an existing record via `PATCH`. Called by the ticket panel when the user saves edits, and available to the model directly.
+
+**Parameters:** `table` (required), `sys_id` (required), `data` (required) — the field values to change.
+
+### `add_journal_entry`
+
+Append a **comment** (customer-visible) or **work note** (internal) to a record's activity stream, and return the refreshed activity. Called by the ticket panel's composer.
+
+**Parameters:** `table` (required), `sys_id` (required), `field` (`comments` | `work_notes`), `text` (required).
+
 ## Resources
 
 ### `ui://servicenow/form`
 
-The interactive form UI rendered by the `render_form` tool, served as an MCP App resource.
+The interactive creation form rendered by the `render_form` tool, served as an MCP App resource.
+
+### `ui://servicenow/ticket`
+
+The interactive ticket panel rendered by the `render_ticket` tool, served as an MCP App resource.
 
 ## Client Configuration
 

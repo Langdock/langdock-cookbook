@@ -54,6 +54,28 @@ export interface FormField {
 export interface FormSchema {
   table: string;
   fields: FormField[];
+  /** Full table hierarchy (table + parent tables), child first. */
+  hierarchy?: string[];
+  /** True when the table extends `task` — enables ticket-aware UI. */
+  isTaskTable?: boolean;
+}
+
+/** A single ServiceNow record, with both raw values and display labels. */
+export interface TicketRecord {
+  table: string;
+  sysId: string;
+  number?: string;
+  displayValue?: string;
+  /** Field name -> { value, display }. Uses `sysparm_display_value=all`. */
+  values: Record<string, { value: string; display: string }>;
+}
+
+/** One comment or work-note entry from the record's activity stream. */
+export interface ActivityEntry {
+  field: "comments" | "work_notes";
+  value: string;
+  createdOn: string;
+  createdBy: string;
 }
 
 function classifyInputType(internalType: string): FormField["inputType"] {
@@ -287,5 +309,171 @@ export async function getFormFields(
   // Sort alphabetically by label
   fields.sort((a, b) => a.label.localeCompare(b.label));
 
-  return { table, fields };
+  return {
+    table,
+    fields,
+    hierarchy: tableHierarchy,
+    isTaskTable: tableHierarchy.includes("task"),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Existing-record helpers (view / update / activity)
+// ---------------------------------------------------------------------------
+
+function buildHeaders(
+  accessToken: string,
+  extraHeaders: Record<string, string>,
+): Record<string, string> {
+  return {
+    ...extraHeaders,
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+}
+
+/** A 32-char hex string is a ServiceNow sys_id. */
+function looksLikeSysId(value: string): boolean {
+  return /^[0-9a-f]{32}$/i.test(value.trim());
+}
+
+/**
+ * Normalize a Table API field value into { value, display }.
+ * With `sysparm_display_value=all`, each field is { value, display_value }.
+ */
+function normalizeValue(raw: unknown): { value: string; display: string } {
+  if (raw && typeof raw === "object") {
+    const obj = raw as { value?: unknown; display_value?: unknown };
+    const value = obj.value != null ? String(obj.value) : "";
+    const display =
+      obj.display_value != null ? String(obj.display_value) : value;
+    return { value, display };
+  }
+  const str = raw == null ? "" : String(raw);
+  return { value: str, display: str };
+}
+
+function toTicketRecord(
+  table: string,
+  raw: Record<string, unknown>,
+): TicketRecord {
+  const values: TicketRecord["values"] = {};
+  for (const [key, val] of Object.entries(raw)) {
+    values[key] = normalizeValue(val);
+  }
+  return {
+    table,
+    sysId: values.sys_id?.value ?? "",
+    number: values.number?.value || undefined,
+    displayValue: values.short_description?.display || undefined,
+    values,
+  };
+}
+
+/**
+ * Fetch a single record by sys_id or by its human-readable number
+ * (e.g. `INC0010023`). Values come back with both raw + display labels.
+ */
+export async function getRecord(
+  table: string,
+  idOrNumber: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<TicketRecord> {
+  const instanceUrl = getInstanceUrl();
+  const headers = buildHeaders(accessToken, extraHeaders);
+  const id = idOrNumber.trim();
+
+  let url: string;
+  if (looksLikeSysId(id)) {
+    url = `${instanceUrl}/api/now/table/${table}/${id}?sysparm_display_value=all`;
+  } else {
+    const params = new URLSearchParams({
+      sysparm_query: `number=${id}`,
+      sysparm_display_value: "all",
+      sysparm_limit: "1",
+    });
+    url = `${instanceUrl}/api/now/table/${table}?${params}`;
+  }
+
+  const response = await fetch(url, { method: "GET", headers });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const record = Array.isArray(data.result) ? data.result[0] : data.result;
+  if (!record) {
+    throw new Error(`No ${table} record found for "${idOrNumber}"`);
+  }
+
+  return toTicketRecord(table, record as Record<string, unknown>);
+}
+
+/**
+ * Update fields on an existing record via PATCH. Returns the refreshed record.
+ */
+export async function updateRecord(
+  table: string,
+  sysId: string,
+  data: Record<string, unknown>,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<TicketRecord> {
+  const instanceUrl = getInstanceUrl();
+  const headers = buildHeaders(accessToken, extraHeaders);
+  const url = `${instanceUrl}/api/now/table/${table}/${sysId}?sysparm_display_value=all`;
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+  }
+
+  const result = await response.json();
+  return toTicketRecord(table, result.result as Record<string, unknown>);
+}
+
+/**
+ * Fetch the comment / work-note activity stream for a record from
+ * `sys_journal_field`, oldest first. Visibility follows the user's ACLs.
+ */
+export async function getActivity(
+  table: string,
+  sysId: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<ActivityEntry[]> {
+  const instanceUrl = getInstanceUrl();
+  const headers = buildHeaders(accessToken, extraHeaders);
+  const url = `${instanceUrl}/api/now/table/sys_journal_field`;
+  const params = new URLSearchParams({
+    sysparm_query: `name=${table}^element_id=${sysId}^elementINcomments,work_notes^ORDERBYsys_created_on`,
+    sysparm_fields: "element,value,sys_created_on,sys_created_by",
+    sysparm_display_value: "true",
+    sysparm_limit: "200",
+  });
+
+  const response = await fetch(`${url}?${params}`, { method: "GET", headers });
+  if (!response.ok) {
+    // Activity is best-effort; a failure here shouldn't break the panel.
+    return [];
+  }
+
+  const data = await response.json();
+  return (data.result || []).map(
+    (r: Record<string, unknown>): ActivityEntry => ({
+      field: String(r.element) === "work_notes" ? "work_notes" : "comments",
+      value: String(r.value ?? ""),
+      createdOn: String(r.sys_created_on ?? ""),
+      createdBy: String(r.sys_created_by ?? ""),
+    }),
+  );
 }

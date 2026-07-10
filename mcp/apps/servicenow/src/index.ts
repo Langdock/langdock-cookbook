@@ -19,11 +19,18 @@ import {
   getAuthorizationSession,
   storeAuthorizationSession,
 } from "./oauth/provider.js";
-import { getFormFields, submitForm } from "./servicenow/client.js";
+import {
+  getActivity,
+  getFormFields,
+  getRecord,
+  submitForm,
+  updateRecord,
+} from "./servicenow/client.js";
 import { encodeForDataAttr } from "./utils/encodeForDataAttr.js";
 import { extractCustomHeaders } from "./utils/extractCustomHeaders.js";
 import { getBaseUrl } from "./utils/getBaseUrl.js";
 import { getFormHtml } from "./utils/getFormHtml.js";
+import { getTicketHtml } from "./utils/getTicketHtml.js";
 import { getInstanceUrl } from "./utils/getInstanceUrl.js";
 import { safeJsonForHtml } from "./utils/safeJsonForHtml.js";
 
@@ -186,6 +193,7 @@ function createMcpServer(
   });
 
   const formResourceUri = "ui://servicenow/form";
+  const ticketResourceUri = "ui://servicenow/ticket";
 
   // Register form UI resource
   registerAppResource(
@@ -199,6 +207,23 @@ function createMcpServer(
           uri: formResourceUri,
           mimeType: RESOURCE_MIME_TYPE,
           text: await getFormHtml(),
+        },
+      ],
+    }),
+  );
+
+  // Register ticket UI resource (interactive view/edit panel)
+  registerAppResource(
+    server,
+    ticketResourceUri,
+    ticketResourceUri,
+    { mimeType: RESOURCE_MIME_TYPE },
+    async () => ({
+      contents: [
+        {
+          uri: ticketResourceUri,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: await getTicketHtml(),
         },
       ],
     }),
@@ -303,6 +328,205 @@ function createMcpServer(
               type: "resource",
               resource: {
                 uri: formResourceUri,
+                mimeType: RESOURCE_MIME_TYPE,
+                text: html,
+              },
+            },
+          ],
+          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Get a single existing record
+  server.registerTool(
+    "get_record",
+    {
+      title: "Get Record",
+      description:
+        "Fetch a single existing ServiceNow record by sys_id or by its number (e.g. INC0010023).",
+      inputSchema: {
+        table: z.string().describe("The ServiceNow table name"),
+        id: z
+          .string()
+          .describe("The record sys_id or human-readable number (e.g. INC0010023)"),
+      },
+    },
+    async ({ table, id }) => {
+      try {
+        const record = await getRecord(table, id, token, customHeaders);
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(record, null, 2) },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Update fields on an existing record
+  server.registerTool(
+    "update_record",
+    {
+      title: "Update Record",
+      description: "Update field values on an existing ServiceNow record.",
+      inputSchema: {
+        table: z.string().describe("The ServiceNow table name"),
+        sys_id: z.string().describe("The sys_id of the record to update"),
+        data: z
+          .record(z.string(), z.unknown())
+          .describe("The field values to update"),
+      },
+    },
+    async ({ table, sys_id, data }) => {
+      try {
+        const record = await updateRecord(
+          table,
+          sys_id,
+          data as Record<string, unknown>,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(record, null, 2) },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Append a comment or work note, and return the refreshed activity
+  server.registerTool(
+    "add_journal_entry",
+    {
+      title: "Add Journal Entry",
+      description:
+        "Append a comment (customer-visible) or work note (internal) to a record's activity stream.",
+      inputSchema: {
+        table: z.string().describe("The ServiceNow table name"),
+        sys_id: z.string().describe("The sys_id of the record"),
+        field: z
+          .enum(["comments", "work_notes"])
+          .describe("Which journal field to append to"),
+        text: z.string().describe("The comment or work note text"),
+      },
+    },
+    async ({ table, sys_id, field, text }) => {
+      try {
+        await updateRecord(
+          table,
+          sys_id,
+          { [field]: text },
+          token,
+          customHeaders,
+        );
+        const activity = await getActivity(
+          table,
+          sys_id,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ activity }, null, 2) },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Render interactive ticket panel for an existing record
+  registerAppTool(
+    server,
+    "render_ticket",
+    {
+      title: "Render Ticket",
+      description:
+        "Open an existing ServiceNow record as an interactive in-chat panel. Users can edit fields, change state, and add comments or work notes directly in the frame.",
+      inputSchema: {
+        table: z.string().describe("The ServiceNow table name"),
+        id: z
+          .string()
+          .describe("The record sys_id or number (e.g. INC0010023)"),
+      },
+      _meta: { ui: { resourceUri: ticketResourceUri } },
+    },
+    async ({ table, id }) => {
+      try {
+        const [schema, record] = await Promise.all([
+          getFormFields(table, token, customHeaders),
+          getRecord(table, id, token, customHeaders),
+        ]);
+        const activity = await getActivity(
+          table,
+          record.sysId,
+          token,
+          customHeaders,
+        );
+
+        // Flatten record values for form seeding (raw values + display labels).
+        const values: Record<string, string> = {};
+        const displays: Record<string, string> = {};
+        for (const [name, v] of Object.entries(record.values)) {
+          values[name] = v.value;
+          displays[name] = v.display;
+        }
+
+        const recordUrl = `${getInstanceUrl()}/nav_to.do?uri=${encodeURIComponent(
+          `${table}.do?sys_id=${record.sysId}`,
+        )}`;
+
+        const renderData = {
+          table,
+          sysId: record.sysId,
+          number: record.number ?? "",
+          isTaskTable: schema.isTaskTable ?? false,
+          fields: schema.fields,
+          values,
+          displays,
+          activity,
+          recordUrl,
+        };
+
+        let html = await getTicketHtml();
+        html = html.replace(
+          '<div class="ticket-container">',
+          `<div class="ticket-container" data-ticket="${encodeForDataAttr(renderData)}">`,
+        );
+        html = html.replace(
+          "</head>",
+          `<script>window.TICKET_DATA = ${safeJsonForHtml(renderData)};</script></head>`,
+        );
+
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(renderData) },
+            {
+              type: "resource",
+              resource: {
+                uri: ticketResourceUri,
                 mimeType: RESOURCE_MIME_TYPE,
                 text: html,
               },

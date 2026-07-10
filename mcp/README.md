@@ -10,7 +10,7 @@ servers, grouped by the problem they solve.
 | **Authentication** | [`authentication/keycloak-dcr/`](authentication/keycloak-dcr/) | OAuth 2.0 delegating to **Keycloak**, with Dynamic Client Registration. |
 | **Apps & UI** | [`apps/google-maps/`](apps/google-maps/) | Rendering an interactive, embedded UI (a live Google Map) inside the MCP client. |
 | **Apps & UI** | [`apps/drawio/`](apps/drawio/) | Embedding an editable draw.io diagram editor inside the MCP client — no auth, fully client-side. |
-| **Apps & UI** | [`apps/servicenow/`](apps/servicenow/) | An interactive record-creation form backed by ServiceNow, with OAuth + Dynamic Client Registration. |
+| **Apps & UI** | [`apps/servicenow/`](apps/servicenow/) | Interactive in-chat ServiceNow records — a creation form plus an editable ticket panel (edit fields, change state, add comments/work notes), with OAuth + Dynamic Client Registration. |
 | **File uploads** | [`file-uploads/`](file-uploads/) | Accepting file inputs and resolving Langdock file references into structured `FileData`. |
 
 New to OAuth + Dynamic Client Registration for MCP? Start with the shared
