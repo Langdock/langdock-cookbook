@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildTicketQuery,
+  deleteAttachment,
   discoverTickets,
   getRecord,
   matchesChoiceFilters,
@@ -126,6 +127,53 @@ test("table paths and write sys_ids are validated before requests", async () => 
       /32-character ServiceNow sys_id/,
     );
   } finally {
+    if (previousInstance == null) {
+      delete process.env.SERVICENOW_INSTANCE;
+    } else {
+      process.env.SERVICENOW_INSTANCE = previousInstance;
+    }
+  }
+});
+
+test("attachment deletion verifies ownership through the visible ticket list", async () => {
+  const previousInstance = process.env.SERVICENOW_INSTANCE;
+  const previousFetch = globalThis.fetch;
+  const ticketSysId = "0123456789abcdef0123456789abcdef";
+  const attachmentSysId = "fedcba9876543210fedcba9876543210";
+  const calls: Array<{ url: string; method: string }> = [];
+  process.env.SERVICENOW_INSTANCE = "dev12345";
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method || "GET";
+    calls.push({ url, method });
+    if (method === "DELETE") return new Response(null, { status: 204 });
+    return new Response(
+      JSON.stringify({
+        result: [
+          {
+            sys_id: attachmentSysId,
+            file_name: "example.txt",
+            content_type: "text/plain",
+            size_bytes: "7",
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    await deleteAttachment(
+      "incident",
+      ticketSysId,
+      attachmentSysId,
+      "token",
+    );
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].method, "DELETE");
+    assert.match(calls[1].url, new RegExp(attachmentSysId));
+  } finally {
+    globalThis.fetch = previousFetch;
     if (previousInstance == null) {
       delete process.env.SERVICENOW_INSTANCE;
     } else {

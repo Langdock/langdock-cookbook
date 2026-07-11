@@ -22,7 +22,6 @@ import {
 import {
   deleteAttachment,
   discoverTickets,
-  downloadAttachment,
   getActivity,
   getAttachments,
   getFormFields,
@@ -867,52 +866,6 @@ function createMcpServer(
             {
               type: "text" as const,
               text: JSON.stringify({ attachments }, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: String(error) }],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  registerAppTool(
-    server,
-    "download_attachment",
-    {
-      title: "Download Ticket Attachment",
-      description:
-        "Download a ServiceNow attachment of up to 8 MB. Returns base64 file data.",
-      inputSchema: {
-        table: z.string().describe("The ticket's concrete ServiceNow table"),
-        table_sys_id: z.string().describe("The ticket sys_id"),
-        sys_id: z.string().describe("The attachment sys_id"),
-      },
-      annotations: { readOnlyHint: true },
-      _meta: {
-        ui: {
-          resourceUri: ticketResourceUri,
-          visibility: ["app"],
-        },
-      },
-    },
-    async ({ table, table_sys_id, sys_id }) => {
-      try {
-        const attachment = await downloadAttachment(
-          table,
-          table_sys_id,
-          sys_id,
-          token,
-          customHeaders,
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(attachment),
             },
           ],
         };

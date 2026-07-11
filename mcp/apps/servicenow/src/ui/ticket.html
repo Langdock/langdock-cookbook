@@ -483,6 +483,10 @@
         border: 1px solid #86efac;
         color: #15803d;
       }
+      .banner.warning {
+        border: 1px solid #fde68a;
+        color: #92400e;
+      }
     </style>
   </head>
   <body>
@@ -585,9 +589,6 @@
           return this.request("ui/open-link", { url });
         }
 
-        downloadFile(contents) {
-          return this.request("ui/download-file", { contents });
-        }
       }
 
       const app = new App({ name: "ServiceNow Ticket", version: "1.0.0" });
@@ -1124,35 +1125,13 @@
       async function handleDownloadAttachment(button) {
         button.disabled = true;
         const originalText = button.textContent;
-        button.textContent = "Downloading...";
+        button.textContent = "Opening...";
         try {
-          const result = await app.callServerTool({
-            name: "download_attachment",
-            arguments: {
-              table: ticket.table,
-              table_sys_id: ticket.sysId,
-              sys_id: button.dataset.id,
-            },
-          });
-          const payload = parsePayload(result);
-          const fileName = (button.dataset.name || "attachment").replace(
-            /[\\/]/g,
-            "_",
-          );
-          const downloadResult = await app.downloadFile([
-            {
-              type: "resource",
-              resource: {
-                uri: `file:///${encodeURIComponent(fileName)}`,
-                mimeType:
-                  payload.contentType || "application/octet-stream",
-                blob: payload.dataBase64,
-              },
-            },
-          ]);
-          if (downloadResult?.isError) {
-            throw new Error("The host denied the file download");
-          }
+          const instanceOrigin = new URL(ticket.recordUrl).origin;
+          const downloadUrl = new URL("/sys_attachment.do", instanceOrigin);
+          downloadUrl.searchParams.set("sys_id", button.dataset.id);
+          await app.openLink(downloadUrl.toString());
+          showBanner("success", "Opened the attachment in ServiceNow.");
         } catch (err) {
           showBanner("error", err.message || "Failed to download attachment.");
         } finally {
@@ -1163,7 +1142,27 @@
 
       async function handleDeleteAttachment(button) {
         const fileName = button.dataset.name || "this attachment";
-        if (!window.confirm(`Delete ${fileName}? This cannot be undone.`)) return;
+        if (button.dataset.confirming !== "true") {
+          document
+            .querySelectorAll('.delete-attachment[data-confirming="true"]')
+            .forEach((otherButton) => {
+              otherButton.dataset.confirming = "false";
+              otherButton.textContent = "Delete";
+            });
+          button.dataset.confirming = "true";
+          button.textContent = "Confirm";
+          showBanner(
+            "warning",
+            `Select Confirm again to permanently delete ${fileName}.`,
+          );
+          window.setTimeout(() => {
+            if (button.isConnected && button.dataset.confirming === "true") {
+              button.dataset.confirming = "false";
+              button.textContent = "Delete";
+            }
+          }, 8000);
+          return;
+        }
         button.disabled = true;
         button.textContent = "Deleting...";
         try {
@@ -1181,6 +1180,7 @@
           showBanner("success", `${fileName} deleted.`);
         } catch (err) {
           button.disabled = false;
+          button.dataset.confirming = "false";
           button.textContent = "Delete";
           showBanner("error", err.message || "Failed to delete attachment.");
         }

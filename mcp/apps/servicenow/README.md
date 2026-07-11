@@ -198,10 +198,11 @@ active filters.
 
 ### `render_ticket`
 
-Open an existing record as an **interactive ticket panel** inside the client. Fetches the record, its field schema, attachments, and comment/work-note activity, then renders an editable panel. Users can edit fields, change state, upload/download/delete files up to 8 MB, and post comments/work notes directly in the frame.
+Open an existing record as an **interactive ticket panel** inside the client. Fetches the record, its field schema, attachments, and comment/work-note activity, then renders an editable panel. Users can edit fields, change state, upload files up to 8 MB, open/download and delete attachments, and post comments or work notes directly in the frame.
 
-Attachment operations are available only inside the interactive panel and are
-not exposed as model-callable MCP tools.
+Attachment operations are available only inside the interactive panel. Upload
+and delete use app-only helpers that are not exposed as model-callable MCP
+tools; downloads open ServiceNow's standard attachment URL through the host.
 
 **Parameters:** `id` (required) — a `sys_id` or number; `table` (optional) —
 the tool detects the concrete task type when it is omitted.

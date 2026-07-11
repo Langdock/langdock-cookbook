@@ -1170,51 +1170,6 @@ export async function uploadAttachment(
   };
 }
 
-/** Download an attachment as base64 so an MCP App can save it locally. */
-export async function downloadAttachment(
-  table: string,
-  tableSysId: string,
-  sysId: string,
-  accessToken: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<{ dataBase64: string; contentType: string }> {
-  const instanceUrl = getInstanceUrl();
-  const validatedAttachmentSysId = validateSysId(sysId, "attachment sys_id");
-  await assertAttachmentBelongsToTicket(
-    table,
-    tableSysId,
-    validatedAttachmentSysId,
-    accessToken,
-    extraHeaders,
-  );
-  const response = await fetch(
-    `${instanceUrl}/api/now/attachment/${validatedAttachmentSysId}/file`,
-    {
-      method: "GET",
-      headers: {
-        ...extraHeaders,
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "*/*",
-      },
-    },
-  );
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Attachment download failed (${response.status}): ${errorText}`,
-    );
-  }
-  const data = Buffer.from(await response.arrayBuffer());
-  if (data.length > 8 * 1024 * 1024) {
-    throw new Error("Attachments larger than 8 MB cannot be downloaded in-chat");
-  }
-  return {
-    dataBase64: data.toString("base64"),
-    contentType:
-      response.headers.get("content-type") || "application/octet-stream",
-  };
-}
-
 /** Delete an attachment from ServiceNow. */
 export async function deleteAttachment(
   table: string,
@@ -1256,36 +1211,22 @@ async function assertAttachmentBelongsToTicket(
   accessToken: string,
   extraHeaders: Record<string, string>,
 ): Promise<void> {
-  const instanceUrl = getInstanceUrl();
   const validatedTable = validateTableName(table);
   const validatedTableSysId = validateSysId(tableSysId, "ticket sys_id");
   const validatedAttachmentSysId = validateSysId(
     attachmentSysId,
     "attachment sys_id",
   );
-  const params = new URLSearchParams({
-    sysparm_fields: "table_name,table_sys_id",
-    sysparm_display_value: "false",
-  });
-  const response = await fetch(
-    `${instanceUrl}/api/now/table/sys_attachment/${validatedAttachmentSysId}?${params}`,
-    {
-      method: "GET",
-      headers: buildHeaders(accessToken, extraHeaders),
-    },
+  const ticketAttachments = await getAttachments(
+    validatedTable,
+    validatedTableSysId,
+    accessToken,
+    extraHeaders,
   );
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to verify attachment (${response.status}): ${errorText}`,
-    );
-  }
-  const data = await response.json();
-  const attachmentTable = normalizeValue(data.result?.table_name).value;
-  const attachmentTableSysId = normalizeValue(data.result?.table_sys_id).value;
   if (
-    attachmentTable !== validatedTable ||
-    attachmentTableSysId !== validatedTableSysId
+    !ticketAttachments.some(
+      (attachment) => attachment.sysId === validatedAttachmentSysId,
+    )
   ) {
     throw new Error("Attachment does not belong to the displayed ticket");
   }
