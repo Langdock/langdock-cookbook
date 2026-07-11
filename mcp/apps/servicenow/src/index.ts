@@ -26,6 +26,7 @@ import {
   getAttachments,
   getFormFields,
   getRecord,
+  getRecordWithTaskFallback,
   getTicketFields,
   submitForm,
   type TicketSummary,
@@ -779,6 +780,12 @@ function createMcpServer(
         "Append a comment (customer-visible) or work note (internal) to a record's activity stream.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
+        activity_table: z
+          .string()
+          .optional()
+          .describe(
+            "Concrete table used to reload activity when updates use a parent table",
+          ),
         sys_id: z.string().describe("The sys_id of the record"),
         field: z
           .enum(["comments", "work_notes"])
@@ -786,7 +793,7 @@ function createMcpServer(
         text: z.string().describe("The comment or work note text"),
       },
     },
-    async ({ table, sys_id, field, text }) => {
+    async ({ table, activity_table, sys_id, field, text }) => {
       try {
         await updateRecord(
           table,
@@ -796,7 +803,7 @@ function createMcpServer(
           customHeaders,
         );
         const activity = await getActivity(
-          table,
+          activity_table || table,
           sys_id,
           token,
           customHeaders,
@@ -953,6 +960,7 @@ function createMcpServer(
     async ({ table, id }) => {
       try {
         let resolvedTable: string;
+        let recordTable: string;
         let schema: Awaited<ReturnType<typeof getTicketFields>>;
         let record: Awaited<ReturnType<typeof getRecord>>;
         let activity: Awaited<ReturnType<typeof getActivity>>;
@@ -961,21 +969,40 @@ function createMcpServer(
 
         if (table && idIsSysId) {
           // Discovery cards already provide the concrete table and sys_id, so
-          // all ticket-panel requests can run concurrently.
+          // record, activity, and attachment requests can run concurrently.
           resolvedTable = table;
-          [schema, record, activity, attachments] = await Promise.all([
-            getTicketFields(table, token, customHeaders),
-            getRecord(table, id, token, customHeaders),
-            getActivity(table, id, token, customHeaders),
-            getAttachments(table, id, token, customHeaders),
-          ]);
+          const [recordResult, loadedActivity, loadedAttachments] =
+            await Promise.all([
+              getRecordWithTaskFallback(
+                table,
+                id,
+                token,
+                customHeaders,
+              ),
+              getActivity(table, id, token, customHeaders),
+              getAttachments(table, id, token, customHeaders),
+            ]);
+          record = recordResult.record;
+          recordTable = recordResult.recordTable;
+          activity = loadedActivity;
+          attachments = loadedAttachments;
+          schema = await getTicketFields(
+            recordTable,
+            token,
+            customHeaders,
+          );
         } else if (table) {
           resolvedTable = table;
-          [schema, record] = await Promise.all([
-            getTicketFields(table, token, customHeaders),
-            getRecord(table, id, token, customHeaders),
-          ]);
-          [activity, attachments] = await Promise.all([
+          const recordResult = await getRecordWithTaskFallback(
+            table,
+            id,
+            token,
+            customHeaders,
+          );
+          record = recordResult.record;
+          recordTable = recordResult.recordTable;
+          [schema, activity, attachments] = await Promise.all([
+            getTicketFields(recordTable, token, customHeaders),
             getActivity(table, record.sysId, token, customHeaders),
             getAttachments(table, record.sysId, token, customHeaders),
           ]);
@@ -988,20 +1015,31 @@ function createMcpServer(
           );
           resolvedTable =
             initialRecord.values.sys_class_name?.value || "task";
-          [schema, record] = await Promise.all([
-            getTicketFields(resolvedTable, token, customHeaders),
+          const recordResult =
             resolvedTable === "task"
-              ? Promise.resolve(initialRecord)
-              : getRecord(
+              ? { record: initialRecord, recordTable: "task" }
+              : await getRecordWithTaskFallback(
                   resolvedTable,
                   initialRecord.sysId,
                   token,
                   customHeaders,
-                ),
-          ]);
-          [activity, attachments] = await Promise.all([
-            getActivity(resolvedTable, record.sysId, token, customHeaders),
-            getAttachments(resolvedTable, record.sysId, token, customHeaders),
+                );
+          record = recordResult.record;
+          recordTable = recordResult.recordTable;
+          [schema, activity, attachments] = await Promise.all([
+            getTicketFields(recordTable, token, customHeaders),
+            getActivity(
+              resolvedTable,
+              record.sysId,
+              token,
+              customHeaders,
+            ),
+            getAttachments(
+              resolvedTable,
+              record.sysId,
+              token,
+              customHeaders,
+            ),
           ]);
         }
 
@@ -1019,6 +1057,7 @@ function createMcpServer(
 
         const renderData = {
           table: resolvedTable,
+          recordTable,
           sysId: record.sysId,
           number: record.number ?? "",
           isTaskTable: schema.isTaskTable ?? false,
@@ -1028,6 +1067,10 @@ function createMcpServer(
           activity,
           attachments,
           recordUrl,
+          accessNotice:
+            recordTable !== resolvedTable
+              ? `This ticket is opened through the parent task API because ServiceNow denied direct API access to ${resolvedTable}. Only inherited task fields are editable.`
+              : undefined,
         };
 
         let html = await getTicketHtml();

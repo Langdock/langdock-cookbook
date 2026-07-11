@@ -6,6 +6,7 @@ import {
   deleteAttachment,
   discoverTickets,
   getRecord,
+  getRecordWithTaskFallback,
   matchesChoiceFilters,
   updateRecord,
   type TicketSummary,
@@ -127,6 +128,62 @@ test("table paths and write sys_ids are validated before requests", async () => 
       /32-character ServiceNow sys_id/,
     );
   } finally {
+    if (previousInstance == null) {
+      delete process.env.SERVICENOW_INSTANCE;
+    } else {
+      process.env.SERVICENOW_INSTANCE = previousInstance;
+    }
+  }
+});
+
+test("record access falls back to task after a concrete-table API ACL denial", async () => {
+  const previousInstance = process.env.SERVICENOW_INSTANCE;
+  const previousFetch = globalThis.fetch;
+  const sysId = "0123456789abcdef0123456789abcdef";
+  const urls: string[] = [];
+  process.env.SERVICENOW_INSTANCE = "dev12345";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    urls.push(url);
+    if (urls.length === 1) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: "User Not Authorized",
+            detail: "Failed API level ACL Validation",
+          },
+          status: "failure",
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        result: {
+          sys_id: { value: sysId, display_value: sysId },
+          number: { value: "INC0000001", display_value: "INC0000001" },
+          short_description: {
+            value: "Fallback ticket",
+            display_value: "Fallback ticket",
+          },
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    const result = await getRecordWithTaskFallback(
+      "incident",
+      sysId,
+      "token",
+    );
+    assert.equal(result.recordTable, "task");
+    assert.equal(result.record.number, "INC0000001");
+    assert.match(urls[0], /\/table\/incident\//);
+    assert.match(urls[1], /\/table\/task\//);
+  } finally {
+    globalThis.fetch = previousFetch;
     if (previousInstance == null) {
       delete process.env.SERVICENOW_INSTANCE;
     } else {

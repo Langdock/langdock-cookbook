@@ -1014,6 +1014,45 @@ export async function getRecord(
 }
 
 /**
+ * Some ServiceNow roles can read task records through the parent table while
+ * API-level ACLs deny direct access to the concrete child table.
+ */
+export async function getRecordWithTaskFallback(
+  preferredTable: string,
+  idOrNumber: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ record: TicketRecord; recordTable: string }> {
+  try {
+    return {
+      record: await getRecord(
+        preferredTable,
+        idOrNumber,
+        accessToken,
+        extraHeaders,
+      ),
+      recordTable: preferredTable,
+    };
+  } catch (error) {
+    if (
+      preferredTable === "task" ||
+      !/ServiceNow API error \(403\)/.test(String(error))
+    ) {
+      throw error;
+    }
+    return {
+      record: await getRecord(
+        "task",
+        idOrNumber,
+        accessToken,
+        extraHeaders,
+      ),
+      recordTable: "task",
+    };
+  }
+}
+
+/**
  * Update fields on an existing record via PATCH. Returns the refreshed record.
  */
 export async function updateRecord(

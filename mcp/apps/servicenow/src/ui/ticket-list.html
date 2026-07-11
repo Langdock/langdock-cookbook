@@ -87,6 +87,7 @@
       async function openTicket(card) {
         if (card.getAttribute("aria-busy") === "true") return;
         const errorEl = document.getElementById("error");
+        errorEl.textContent = "";
         card.setAttribute("aria-busy", "true");
         try {
           const result = await requestHost("tools/call", {
@@ -110,6 +111,7 @@
         } catch (error) {
           card.removeAttribute("aria-busy");
           errorEl.textContent = error.message || "Could not load ticket.";
+          errorEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
       }
 
@@ -257,7 +259,7 @@
               `${label ? `<div class="group">${escapeHtml(label)} · ${groupTickets.length}</div>` : ""}${groupTickets.map(ticketHtml).join("")}`,
           )
           .join("");
-        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${warning}${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}<div id="error" class="error" role="alert"></div>`;
+        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${warning}<div id="error" class="error" role="alert"></div>${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}`;
         content.querySelectorAll(".ticket").forEach((card) => {
           card.addEventListener("click", (event) => {
             if (event.target.closest(".open-label")) return;

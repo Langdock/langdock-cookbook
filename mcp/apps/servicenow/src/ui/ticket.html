@@ -1021,7 +1021,11 @@
         try {
           const result = await app.callServerTool({
             name: "update_record",
-            arguments: { table: ticket.table, sys_id: ticket.sysId, data },
+            arguments: {
+              table: ticket.recordTable,
+              sys_id: ticket.sysId,
+              data,
+            },
           });
           const record = parsePayload(result);
           if (record && typeof record === "object" && record.values) {
@@ -1054,7 +1058,8 @@
           const result = await app.callServerTool({
             name: "add_journal_entry",
             arguments: {
-              table: ticket.table,
+              table: ticket.recordTable,
+              activity_table: ticket.table,
               sys_id: ticket.sysId,
               field: composerKind,
               text,
@@ -1191,6 +1196,7 @@
         if (!data || !data.fields) return;
         ticket = {
           table: data.table,
+          recordTable: data.recordTable || data.table,
           sysId: data.sysId,
           number: data.number || "",
           isTaskTable: !!data.isTaskTable,
@@ -1200,9 +1206,13 @@
           activity: data.activity || [],
           attachments: data.attachments || [],
           recordUrl: data.recordUrl || "",
+          accessNotice: data.accessNotice || "",
         };
         dirty.clear();
         render();
+        if (ticket.accessNotice) {
+          showBanner("warning", ticket.accessNotice);
+        }
       }
 
       const embedded = getEmbeddedData();

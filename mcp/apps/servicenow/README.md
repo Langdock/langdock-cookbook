@@ -204,6 +204,10 @@ Attachment operations are available only inside the interactive panel. Upload
 and delete use app-only helpers that are not exposed as model-callable MCP
 tools; downloads open ServiceNow's standard attachment URL through the host.
 
+If ServiceNow permits discovery through `task` but denies direct Table API
+access to a concrete child table, the panel falls back to the parent `task`
+endpoint and exposes only inherited task fields for editing.
+
 **Parameters:** `id` (required) — a `sys_id` or number; `table` (optional) —
 the tool detects the concrete task type when it is omitted.
 
