@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ServiceNow Tickets</title>
+    <style>
+      :root { --fg: #18181b; --muted: #71717a; --border: #e4e4e7; --surface: #fafafa; --red: #dc2626; --orange: #ea580c; --amber: #d97706; --blue: #2563eb; --green: #15803d; }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 20px; color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .container { max-width: 760px; margin: 0 auto; }
+      h1 { margin: 0; font-size: 18px; }
+      .summary { color: var(--muted); margin: 4px 0 16px; }
+      .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 16px; }
+      .filter { padding: 3px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+      .group { margin: 18px 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; }
+      .ticket { width: 100%; text-align: left; display: block; padding: 14px; margin: 0 0 10px; border: 1px solid var(--border); border-left-width: 4px; border-radius: 8px; background: #fff; color: inherit; cursor: pointer; font: inherit; text-decoration: none; }
+      .ticket:hover, .ticket:focus-visible { border-color: #a1a1aa; outline: none; }
+      .ticket[aria-busy="true"] { position: relative; opacity: .65; pointer-events: none; }
+      .ticket[aria-busy="true"]::after { content: "Loading ticket…"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: rgba(255, 255, 255, .82); color: var(--fg); font-size: 13px; font-weight: 600; }
+      .ticket.level-critical { border-left-color: var(--red); }
+      .ticket.level-high { border-left-color: var(--orange); }
+      .ticket.level-medium { border-left-color: var(--amber); }
+      .ticket.level-low { border-left-color: #a1a1aa; }
+      .top, .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .number { font-weight: 650; }
+      .open-label { margin-left: auto; padding: 2px 0 2px 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
+      .open-label:hover { color: var(--fg); text-decoration: underline; }
+      .type, .state, .tag { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; color: #3f3f46; font-size: 12px; background: var(--surface); }
+      .tag.level-critical { color: #991b1b; border-color: #fecaca; background: #fef2f2; }
+      .tag.level-high { color: #9a3412; border-color: #fed7aa; background: #fff7ed; }
+      .tag.level-medium { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+      .tag.stale { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+      .state.state-open { color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; }
+      .state.state-pending { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+      .state.state-done { color: #166534; border-color: #bbf7d0; background: #f0fdf4; }
+      .description { margin: 6px 0; font-size: 15px; font-weight: 500; }
+      .meta { color: var(--muted); font-size: 12px; }
+      .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; }
+      .warning { margin: 0 0 16px; padding: 10px 12px; color: #92400e; border: 1px solid #fde68a; border-radius: 8px; background: #fffbeb; }
+      .error { color: #b91c1c; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="ticket-list-container">
+      <div class="container" id="content">Loading tickets…</div>
+    </div>
+    <script type="module">
+      const content = document.getElementById("content");
+      let messageId = 0;
+      const pendingRequests = new Map();
+
+      function requestHost(method, params) {
+        const id = ++messageId;
+        return new Promise((resolve, reject) => {
+          pendingRequests.set(id, { resolve, reject });
+          window.parent.postMessage(
+            { jsonrpc: "2.0", id, method, params },
+            "*",
+          );
+        });
+      }
+
+      function utf8ToBase64(value) {
+        const bytes = new TextEncoder().encode(value);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(offset, offset + chunkSize),
+          );
+        }
+        return btoa(binary);
+      }
+
+      function mountTicketResource(html) {
+        const returnHtml = utf8ToBase64(document.documentElement.outerHTML);
+        const withReturnData = html.replace(
+          "</head>",
+          `<script>window.RETURN_TO_TICKET_LIST = "${returnHtml}";<\/script></head>`,
+        );
+        document.open();
+        document.write(withReturnData);
+        document.close();
+      }
+
+      async function openTicket(card) {
+        if (card.getAttribute("aria-busy") === "true") return;
+        const errorEl = document.getElementById("error");
+        errorEl.textContent = "";
+        card.setAttribute("aria-busy", "true");
+        try {
+          const result = await requestHost("tools/call", {
+            name: "render_ticket",
+            arguments: {
+              table: card.dataset.table,
+              id: card.dataset.id,
+            },
+          });
+          const errorText = result?.content?.find(
+            (item) => item.type === "text",
+          )?.text;
+          if (result?.isError) throw new Error(errorText || "Could not load ticket");
+          const resource = result?.content?.find(
+            (item) => item.type === "resource" && item.resource?.text,
+          )?.resource;
+          if (!resource?.text) {
+            throw new Error("The ticket tool did not return a renderable panel");
+          }
+          mountTicketResource(resource.text);
+        } catch (error) {
+          card.removeAttribute("aria-busy");
+          errorEl.textContent = error.message || "Could not load ticket.";
+          errorEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }
+
+      async function openExternal(url) {
+        const result = await requestHost("ui/open-link", { url });
+        if (result?.isError) throw new Error("The host denied the link request");
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+
+      function levelClass(rawValue, displayValue) {
+        const text = String(displayValue || "").toLowerCase();
+        if (/critical|highest/.test(text)) return "level-critical";
+        if (/\bhigh\b/.test(text)) return "level-high";
+        if (/medium|moderate/.test(text)) return "level-medium";
+        if (/low|planning/.test(text)) return "level-low";
+        const rank = Number.parseInt(rawValue || displayValue, 10);
+        if (rank === 1) return "level-critical";
+        if (rank === 2) return "level-high";
+        if (rank === 3) return "level-medium";
+        return "level-low";
+      }
+
+      function stateClass(ticket) {
+        const state = String(ticket.state || "").toLowerCase();
+        if (/closed|resolved|complete|done/.test(state)) return "state-done";
+        if (/pending|hold|await|scheduled/.test(state)) return "state-pending";
+        if (/open|new|progress|active/.test(state)) return "state-open";
+        return "";
+      }
+
+      function parseServiceNowDate(value) {
+        if (!value) return "";
+        const normalized = value.includes("T")
+          ? value
+          : `${value.replace(" ", "T")}Z`;
+        const date = new Date(normalized);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      function relativeTime(value) {
+        const date = parseServiceNowDate(value);
+        if (!date) return value || "";
+        const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+        const future = seconds < 0;
+        const absolute = Math.abs(seconds);
+        const units = [
+          ["year", 31536000],
+          ["month", 2592000],
+          ["day", 86400],
+          ["hour", 3600],
+          ["minute", 60],
+        ];
+        const [unit, duration] =
+          units.find(([, size]) => absolute >= size) || ["minute", 60];
+        const amount = Math.max(1, Math.floor(absolute / duration));
+        const label = `${amount} ${unit}${amount === 1 ? "" : "s"}`;
+        return future ? `in ${label}` : `${label} ago`;
+      }
+
+      function isStale(ticket) {
+        const updated = parseServiceNowDate(ticket.updatedAt);
+        const inactive = /^(false|no|0)$/i.test(
+          ticket.activeValue || ticket.active || "",
+        );
+        return (
+          updated &&
+          !inactive &&
+          Date.now() - updated.getTime() > 7 * 24 * 60 * 60 * 1000
+        );
+      }
+
+      function groupLabel(ticket, groupBy) {
+        if (groupBy === "state") return ticket.state || "No state";
+        if (groupBy === "type") return ticket.tableLabel || ticket.table || "Task";
+        if (groupBy === "assignment_group")
+          return ticket.assignmentGroup || "Unassigned group";
+        return "";
+      }
+
+      function ticketHtml(ticket) {
+        const cardLevel = levelClass(ticket.priorityValue, ticket.priority);
+        const tags = [
+          ticket.priority && {
+            label: `Priority ${ticket.priority}`,
+            className: levelClass(ticket.priorityValue, ticket.priority),
+          },
+          ticket.impact && {
+            label: `Impact ${ticket.impact}`,
+            className: levelClass(ticket.impactValue, ticket.impact),
+          },
+          ticket.urgency && {
+            label: `Urgency ${ticket.urgency}`,
+            className: levelClass(ticket.urgencyValue, ticket.urgency),
+          },
+          ticket.severity && {
+            label: `Severity ${ticket.severity}`,
+            className: levelClass(ticket.severityValue, ticket.severity),
+          },
+          isStale(ticket) && {
+            label: "Stale",
+            className: "stale",
+          },
+        ].filter(Boolean);
+        const meta = [
+          ticket.assignedTo && `Assigned to ${ticket.assignedTo}`,
+          ticket.assignmentGroup && ticket.assignmentGroup,
+          ticket.openedAt && `Opened ${relativeTime(ticket.openedAt)}`,
+          ticket.updatedAt && `Updated ${relativeTime(ticket.updatedAt)}`,
+        ].filter(Boolean);
+        return `<div class="ticket ${cardLevel}" role="button" tabindex="0" data-table="${escapeHtml(ticket.table)}" data-id="${escapeHtml(ticket.sysId)}"><div class="top"><span class="number">${escapeHtml(ticket.number || "Ticket")}</span><span class="type">${escapeHtml(ticket.tableLabel || ticket.table)}</span>${ticket.state ? `<span class="state ${stateClass(ticket)}">${escapeHtml(ticket.state)}</span>` : ""}<button type="button" class="open-label" data-url="${escapeHtml(ticket.recordUrl)}">Open in ServiceNow ↗</button></div><div class="description">${escapeHtml(ticket.shortDescription || "No short description")}</div><div class="meta">${tags.map((tag) => `<span class="tag ${tag.className}">${escapeHtml(tag.label)}</span>`).join("")}${meta.map(escapeHtml).join(" · ")}</div></div>`;
+      }
+
+      function dataFromPage() {
+        if (window.TICKET_LIST_DATA) return window.TICKET_LIST_DATA;
+        const data = document.querySelector(".ticket-list-container")?.dataset.tickets;
+        try { return data ? JSON.parse(data) : null; } catch { return null; }
+      }
+
+      function render(data) {
+        const tickets = data?.tickets || [];
+        const title = data?.title || "ServiceNow tickets";
+        const warning = data?.warning
+          ? `<div class="warning" role="status">${escapeHtml(data.warning)}</div>`
+          : "";
+        if (!tickets.length) {
+          content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">No tickets matched these filters.</p>${warning}<div class="empty">Try broadening the state, assignment, or date filters.</div>`;
+          return;
+        }
+        const filters = (data.filterSummary || [])
+          .map((filter) => `<span class="filter">${escapeHtml(filter)}</span>`)
+          .join("");
+        const groupBy = data.groupBy || "none";
+        const groups = new Map();
+        for (const ticket of tickets) {
+          const label = groupLabel(ticket, groupBy);
+          if (!groups.has(label)) groups.set(label, []);
+          groups.get(label).push(ticket);
+        }
+        const groupsHtml = [...groups.entries()]
+          .map(
+            ([label, groupTickets]) =>
+              `${label ? `<div class="group">${escapeHtml(label)} · ${groupTickets.length}</div>` : ""}${groupTickets.map(ticketHtml).join("")}`,
+          )
+          .join("");
+        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${warning}<div id="error" class="error" role="alert"></div>${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}`;
+        content.querySelectorAll(".ticket").forEach((card) => {
+          card.addEventListener("click", (event) => {
+            if (event.target.closest(".open-label")) return;
+            openTicket(card);
+          });
+          card.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            openTicket(card);
+          });
+        });
+        content.querySelectorAll(".open-label").forEach((button) =>
+          button.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            const url = button.dataset.url;
+            const errorEl = document.getElementById("error");
+            try {
+              await openExternal(url);
+            } catch (error) {
+              errorEl.textContent = `${error.message || "Could not open ServiceNow."} URL: ${url}`;
+            }
+          }),
+        );
+      }
+
+      window.addEventListener("message", (event) => {
+        const message = event.data || {};
+        const data = message.params?._meta?.["mcpui.dev/ui-initial-render-data"] || message.data || message.renderData;
+        if (data?.tickets) render(data);
+        if (message.id && pendingRequests.has(message.id)) {
+          const request = pendingRequests.get(message.id);
+          pendingRequests.delete(message.id);
+          if (message.error) {
+            request.reject(new Error(message.error.message || "Host request failed"));
+          } else {
+            request.resolve(message.result);
+          }
+        }
+      });
+      const embedded = dataFromPage();
+      if (embedded) render(embedded);
+      window.parent.postMessage({ type: "appReady", name: "ServiceNow Ticket Discovery" }, "*");
+    </script>
+  </body>
+</html>

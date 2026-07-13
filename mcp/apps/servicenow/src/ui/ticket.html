@@ -1,0 +1,1232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ServiceNow Ticket</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #09090b;
+        --fg-muted: #71717a;
+        --border: #e4e4e7;
+        --input-bg: #ffffff;
+        --btn-primary-bg: #18181b;
+        --btn-primary-fg: #fafafa;
+        --btn-secondary-bg: transparent;
+        --btn-secondary-fg: #09090b;
+        --focus-ring: #09090b;
+        --note-bg: #fffbeb;
+        --note-border: #fde68a;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        padding: 20px;
+        background: var(--bg);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .ticket-container {
+        max-width: 560px;
+        margin: 0 auto;
+      }
+
+      .ticket-header {
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .ticket-header .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+
+      .ticket-number {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--fg-muted);
+        text-transform: uppercase;
+      }
+
+      .ticket-header h1 {
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .state-badge {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 999px;
+        background: #f4f4f5;
+        color: #3f3f46;
+        border: 1px solid var(--border);
+        white-space: nowrap;
+      }
+
+      .open-link {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--fg-muted);
+        text-decoration: none;
+      }
+      .open-link:hover {
+        color: var(--fg);
+        text-decoration: underline;
+      }
+      .back-link {
+        border: 0;
+        background: transparent;
+        color: var(--fg-muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        padding: 0;
+      }
+      .back-link:hover {
+        color: var(--fg);
+        text-decoration: underline;
+      }
+
+      .section {
+        margin-bottom: 22px;
+      }
+
+      .section-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--fg-muted);
+        margin-bottom: 12px;
+      }
+
+      .form-group {
+        margin-bottom: 14px;
+      }
+
+      .form-group label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 6px;
+      }
+
+      .form-group label .required {
+        color: #ef4444;
+        margin-left: 2px;
+      }
+
+      .form-group input:not([type="checkbox"]),
+      .form-group textarea,
+      .form-group select {
+        width: 100%;
+        height: 36px;
+        padding: 0 10px;
+        font-size: 13px;
+        font-family: inherit;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--input-bg);
+        color: var(--fg);
+        transition: border-color 0.15s;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+
+      .form-group input:not([type="checkbox"]):hover,
+      .form-group textarea:hover,
+      .form-group select:hover {
+        border-color: #c4c4c7;
+      }
+
+      .form-group textarea {
+        height: auto;
+        min-height: 72px;
+        padding: 8px 10px;
+        resize: vertical;
+        line-height: 1.5;
+      }
+
+      .form-group select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 28px;
+        cursor: pointer;
+      }
+
+      .form-group input:not([type="checkbox"]):focus,
+      .form-group textarea:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 3px rgba(9, 9, 11, 0.08);
+      }
+
+      .checkbox-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      .form-group input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
+        min-width: 15px;
+        padding: 0;
+        cursor: pointer;
+        accent-color: var(--btn-primary-bg);
+        flex-shrink: 0;
+        appearance: auto;
+        -webkit-appearance: auto;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: var(--fg-muted);
+        margin-top: 4px;
+      }
+
+      details.more-fields {
+        margin-top: 4px;
+      }
+      details.more-fields > summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--fg-muted);
+        padding: 6px 0;
+        list-style: none;
+      }
+      details.more-fields > summary::-webkit-details-marker {
+        display: none;
+      }
+      details.more-fields > summary::before {
+        content: "▸ ";
+      }
+      details.more-fields[open] > summary::before {
+        content: "▾ ";
+      }
+      details.more-fields > .more-body {
+        padding-top: 12px;
+      }
+
+      /* Activity stream */
+      .activity {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .activity-empty {
+        font-size: 13px;
+        color: var(--fg-muted);
+        padding: 8px 0;
+      }
+
+      .entry {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+
+      .entry.work_notes {
+        background: var(--note-bg);
+        border-color: var(--note-border);
+      }
+
+      .entry-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        color: var(--fg-muted);
+      }
+
+      .entry-kind {
+        font-weight: 600;
+        color: var(--fg);
+      }
+
+      .entry-body {
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      /* Attachments */
+      .attachments {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .attachment {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+      }
+      .attachment-info {
+        min-width: 0;
+        flex: 1;
+      }
+      .attachment-name {
+        font-size: 13px;
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .attachment-meta {
+        color: var(--fg-muted);
+        font-size: 11px;
+      }
+      .attachment-action {
+        border: 0;
+        background: transparent;
+        color: var(--fg-muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+      }
+      .attachment-action:hover { color: var(--fg); }
+      .upload-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .upload-row input[type="file"] {
+        min-width: 0;
+        flex: 1;
+        font: inherit;
+        font-size: 12px;
+      }
+
+      /* Composer */
+      .composer {
+        margin-top: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .composer textarea {
+        width: 100%;
+        min-height: 64px;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-family: inherit;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        resize: vertical;
+        line-height: 1.5;
+      }
+      .composer textarea:focus {
+        outline: none;
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 3px rgba(9, 9, 11, 0.08);
+      }
+
+      .composer-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 10px;
+      }
+
+      .kind-toggle {
+        display: flex;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .kind-toggle button {
+        border: none;
+        background: transparent;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        padding: 6px 10px;
+        cursor: pointer;
+        color: var(--fg-muted);
+      }
+      .kind-toggle button.active {
+        background: var(--btn-primary-bg);
+        color: var(--btn-primary-fg);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 34px;
+        padding: 0 14px;
+        font-size: 13px;
+        font-weight: 500;
+        font-family: inherit;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: opacity 0.1s;
+        white-space: nowrap;
+        border: 1px solid var(--border);
+      }
+
+      .btn:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      .btn-primary {
+        background: var(--btn-primary-bg);
+        color: var(--btn-primary-fg);
+        border-color: var(--btn-primary-bg);
+      }
+      .btn-primary:hover:not(:disabled) {
+        opacity: 0.88;
+      }
+      .btn-primary:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: var(--btn-secondary-bg);
+        color: var(--btn-secondary-fg);
+        margin-right: 8px;
+      }
+      .btn-secondary:hover {
+        opacity: 0.7;
+      }
+
+      .composer .btn {
+        margin-left: auto;
+      }
+
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+
+      .dirty-note {
+        margin-right: auto;
+        font-size: 12px;
+        color: var(--fg-muted);
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 48px 0;
+        font-size: 13px;
+        color: var(--fg-muted);
+      }
+      .loading::after {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 1.5px solid var(--border);
+        border-top-color: var(--fg);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .banner {
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.5;
+        margin-bottom: 16px;
+      }
+      .banner.error {
+        border: 1px solid #fca5a5;
+        color: #b91c1c;
+      }
+      .banner.success {
+        border: 1px solid #86efac;
+        color: #15803d;
+      }
+      .banner.warning {
+        border: 1px solid #fde68a;
+        color: #92400e;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ticket-container">
+      <div id="content">
+        <div class="loading">Loading ticket...</div>
+      </div>
+    </div>
+
+    <script type="module">
+      // ---- MCP App bridge (same protocol as the create form) ----
+      class App {
+        constructor(options) {
+          this.name = options.name;
+          this.version = options.version;
+          this.onrenderdata = null;
+          this._messageId = 0;
+          this._pendingRequests = new Map();
+          this._queuedMessages = [];
+        }
+
+        connect() {
+          window.addEventListener("message", (event) => {
+            const message = event.data;
+            let renderData = null;
+
+            if (
+              message.method === "ui/notifications/tool-result" &&
+              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
+            ) {
+              renderData =
+                message.params._meta["mcpui.dev/ui-initial-render-data"];
+            } else if (message.type === "renderData" && message.data) {
+              renderData = message.data;
+            } else if (
+              (message.type === "init" || message.type === "initialData") &&
+              message.data
+            ) {
+              renderData = message.data;
+            } else if (message.table && message.fields) {
+              renderData = message;
+            } else if (message.renderData) {
+              renderData = message.renderData;
+            }
+
+            if (renderData) {
+              if (this.onrenderdata) this.onrenderdata(renderData);
+              else this._queuedMessages.push(renderData);
+            }
+
+            if (
+              message.jsonrpc === "2.0" &&
+              message.id &&
+              this._pendingRequests.has(message.id)
+            ) {
+              const { resolve, reject } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              if (message.error)
+                reject(new Error(message.error.message || "Tool call failed"));
+              else resolve(message.result);
+            } else if (message.id && this._pendingRequests.has(message.id)) {
+              const { resolve } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              resolve(message.result);
+            }
+          });
+          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+        }
+
+        processQueue() {
+          while (this._queuedMessages.length > 0 && this.onrenderdata) {
+            this.onrenderdata(this._queuedMessages.shift());
+          }
+        }
+
+        request(method, params) {
+          const id = ++this._messageId;
+          return new Promise((resolve, reject) => {
+            this._pendingRequests.set(id, { resolve, reject });
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                method,
+                id,
+                params,
+              },
+              "*",
+            );
+          });
+        }
+
+        callServerTool(params) {
+          return this.request("tools/call", {
+            name: params.name,
+            arguments: params.arguments,
+          });
+        }
+
+        openLink(url) {
+          return this.request("ui/open-link", { url });
+        }
+
+      }
+
+      const app = new App({ name: "ServiceNow Ticket", version: "1.0.0" });
+      const contentEl = document.getElementById("content");
+
+      // Fields the user should never see in the editor: system fields and the
+      // append-only journal fields (handled by the composer instead).
+      const HIDDEN_FIELDS = new Set(["comments", "work_notes"]);
+      // Curated "primary" fields shown first for task-derived tables.
+      const PRIMARY_ORDER = [
+        "short_description",
+        "description",
+        "state",
+        "priority",
+        "urgency",
+        "impact",
+        "category",
+        "subcategory",
+        "assigned_to",
+        "assignment_group",
+      ];
+
+      let ticket = null; // full render data
+      let composerKind = "comments";
+      const dirty = new Set(); // names of fields the user edited
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function base64ToUtf8(value) {
+        const binary = atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return new TextDecoder().decode(bytes);
+      }
+
+      function toTitleCase(str) {
+        return String(str)
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      function getEmbeddedData() {
+        if (window.TICKET_DATA) return window.TICKET_DATA;
+        const container = document.querySelector(".ticket-container");
+        const attr = container?.getAttribute("data-ticket");
+        if (attr) {
+          try {
+            return JSON.parse(attr);
+          } catch (e) {
+            console.error("Failed to parse ticket data:", e);
+          }
+        }
+        return null;
+      }
+
+      // ---- Rendering ----
+
+      function fieldValue(field) {
+        const raw = ticket.values?.[field.name];
+        return raw != null ? String(raw) : "";
+      }
+
+      function displayValue(field) {
+        const disp = ticket.displays?.[field.name];
+        if (disp != null && disp !== "") return String(disp);
+        return fieldValue(field);
+      }
+
+      function renderInput(field) {
+        const value = fieldValue(field);
+        const safeVal = escapeHtml(value);
+        const maxLength = field.maxLength
+          ? `maxlength="${field.maxLength}"`
+          : "";
+
+        switch (field.inputType) {
+          case "textarea":
+            return `<textarea name="${field.name}" id="f_${field.name}" ${maxLength}>${safeVal}</textarea>`;
+
+          case "select": {
+            const options = (field.choices || [])
+              .map(
+                (c) =>
+                  `<option value="${escapeHtml(c.value)}"${
+                    String(c.value) === value ? " selected" : ""
+                  }>${escapeHtml(c.label)}</option>`,
+              )
+              .join("");
+            return `<select name="${field.name}" id="f_${field.name}">
+              <option value="">Select an option</option>
+              ${options}
+            </select>`;
+          }
+
+          case "boolean": {
+            const checked = value === "true" ? "checked" : "";
+            return `<label class="checkbox-wrapper" for="f_${field.name}">
+              <input type="checkbox" name="${field.name}" id="f_${field.name}" value="true" ${checked}>
+              <span>${escapeHtml(field.label)}</span>
+            </label>`;
+          }
+
+          case "number":
+            return `<input type="number" name="${field.name}" id="f_${field.name}" value="${safeVal}">`;
+          case "date":
+            return `<input type="date" name="${field.name}" id="f_${field.name}" value="${safeVal}">`;
+          case "datetime":
+            return `<input type="datetime-local" name="${field.name}" id="f_${field.name}" value="${safeVal}">`;
+
+          case "reference": {
+            // Show the human-readable display value; store the raw sys_id so we
+            // can tell whether the user actually changed it before submitting.
+            const disp = escapeHtml(displayValue(field));
+            return `<input type="text" name="${field.name}" id="f_${field.name}"
+              value="${disp}" data-reference="1" placeholder="Enter sys_id">`;
+          }
+
+          default:
+            return `<input type="text" name="${field.name}" id="f_${field.name}" value="${safeVal}" ${maxLength}>`;
+        }
+      }
+
+      function renderFieldGroup(field) {
+        if (field.inputType === "boolean") {
+          return `<div class="form-group" data-field="${field.name}">${renderInput(field)}</div>`;
+        }
+        const required = field.required
+          ? '<span class="required">*</span>'
+          : "";
+        let hint = "";
+        if (field.referenceTable) {
+          const ref =
+            typeof field.referenceTable === "string"
+              ? field.referenceTable
+              : field.referenceTable?.name || "";
+          if (ref)
+            hint = `<div class="hint">References ${toTitleCase(ref)} — edit with a sys_id</div>`;
+        }
+        return `
+          <div class="form-group" data-field="${field.name}">
+            <label for="f_${field.name}">${escapeHtml(field.label)}${required}</label>
+            ${renderInput(field)}
+            ${hint}
+          </div>`;
+      }
+
+      function stateBadge() {
+        const stateField = ticket.fields.find((f) => f.name === "state");
+        if (!stateField) return "";
+        const label = displayValue(stateField) || fieldValue(stateField);
+        if (!label) return "";
+        return `<span class="state-badge" id="state-badge">${escapeHtml(label)}</span>`;
+      }
+
+      function activityHtml() {
+        const entries = ticket.activity || [];
+        if (entries.length === 0) {
+          return `<div class="activity-empty">No comments or work notes yet.</div>`;
+        }
+        return `<div class="activity">
+          ${entries
+            .map((e) => {
+              const kind =
+                e.field === "work_notes" ? "Work note" : "Comment";
+              const meta = [e.createdBy, e.createdOn]
+                .filter(Boolean)
+                .map(escapeHtml)
+                .join(" · ");
+              return `<div class="entry ${e.field}">
+                <div class="entry-meta">
+                  <span class="entry-kind">${kind}</span>
+                  ${meta ? `<span>${meta}</span>` : ""}
+                </div>
+                <div class="entry-body">${escapeHtml(e.value)}</div>
+              </div>`;
+            })
+            .join("")}
+        </div>`;
+      }
+
+      function formatBytes(bytes) {
+        const size = Number(bytes) || 0;
+        if (size < 1024) return `${size} B`;
+        if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+        return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+      }
+
+      function attachmentsHtml() {
+        const attachments = ticket.attachments || [];
+        const list = attachments.length
+          ? `<div class="attachments">${attachments
+              .map(
+                (attachment) => `
+                  <div class="attachment">
+                    <div class="attachment-info">
+                      <div class="attachment-name" title="${escapeHtml(attachment.fileName)}">${escapeHtml(attachment.fileName)}</div>
+                      <div class="attachment-meta">${escapeHtml(formatBytes(attachment.sizeBytes))}${attachment.createdBy ? ` · ${escapeHtml(attachment.createdBy)}` : ""}</div>
+                    </div>
+                    <button type="button" class="attachment-action download-attachment" data-id="${escapeHtml(attachment.sysId)}" data-name="${escapeHtml(attachment.fileName)}">Download</button>
+                    <button type="button" class="attachment-action delete-attachment" data-id="${escapeHtml(attachment.sysId)}" data-name="${escapeHtml(attachment.fileName)}">Delete</button>
+                  </div>`,
+              )
+              .join("")}</div>`
+          : `<div class="activity-empty">No attachments yet.</div>`;
+        return `${list}
+          <div class="upload-row">
+            <input type="file" id="attachment-file">
+            <button type="button" class="btn btn-primary" id="upload-attachment-btn">Upload</button>
+          </div>`;
+      }
+
+      function editableFields() {
+        return ticket.fields.filter(
+          (f) => !f.readOnly && !HIDDEN_FIELDS.has(f.name),
+        );
+      }
+
+      function partitionFields() {
+        const editable = editableFields();
+        if (!ticket.isTaskTable) return { primary: editable, more: [] };
+        const byName = new Map(editable.map((f) => [f.name, f]));
+        const primary = [];
+        for (const name of PRIMARY_ORDER) {
+          if (byName.has(name)) {
+            primary.push(byName.get(name));
+            byName.delete(name);
+          }
+        }
+        return { primary, more: [...byName.values()] };
+      }
+
+      function render() {
+        const title =
+          displayValue({ name: "short_description" }) ||
+          ticket.displays?.short_description ||
+          ticket.number ||
+          toTitleCase(ticket.table);
+        const { primary, more } = partitionFields();
+
+        const moreHtml = more.length
+          ? `<details class="more-fields">
+               <summary>All fields (${more.length})</summary>
+               <div class="more-body">${more.map(renderFieldGroup).join("")}</div>
+             </details>`
+          : "";
+
+        contentEl.innerHTML = `
+          <div class="ticket-header">
+            <div class="eyebrow">
+              ${window.RETURN_TO_TICKET_LIST ? '<button type="button" class="back-link">← Results</button>' : ""}
+              ${ticket.number ? `<span class="ticket-number">${escapeHtml(ticket.number)}</span>` : ""}
+              ${stateBadge()}
+              ${ticket.recordUrl ? `<a class="open-link" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener">Open in ServiceNow ↗</a>` : ""}
+            </div>
+            <h1>${escapeHtml(title)}</h1>
+          </div>
+
+          <div id="banner-slot"></div>
+
+          <form id="ticket-form">
+            <div class="section">
+              <div class="section-title">Details</div>
+              ${primary.map(renderFieldGroup).join("")}
+              ${moreHtml}
+            </div>
+            <div class="actions">
+              <span class="dirty-note" id="dirty-note"></span>
+              <button type="button" class="btn btn-secondary" id="reset-btn">Reset</button>
+              <button type="submit" class="btn btn-primary" id="save-btn" disabled>Save changes</button>
+            </div>
+          </form>
+
+          <div class="section">
+            <div class="section-title">Attachments</div>
+            ${attachmentsHtml()}
+          </div>
+
+          <div class="section">
+            <div class="section-title">Activity</div>
+            <div id="activity-slot">${activityHtml()}</div>
+            <div class="composer">
+              <textarea id="composer-text" placeholder="Add a comment or work note..."></textarea>
+              <div class="composer-actions">
+                <div class="kind-toggle" id="kind-toggle">
+                  <button type="button" data-kind="comments" class="${composerKind === "comments" ? "active" : ""}">Comment</button>
+                  <button type="button" data-kind="work_notes" class="${composerKind === "work_notes" ? "active" : ""}">Work note</button>
+                </div>
+                <button type="button" class="btn btn-primary" id="add-entry-btn">Add</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        wireEvents();
+      }
+
+      // ---- Interaction ----
+
+      function markDirty(name) {
+        dirty.add(name);
+        updateDirtyState();
+      }
+
+      function updateDirtyState() {
+        const saveBtn = document.getElementById("save-btn");
+        const note = document.getElementById("dirty-note");
+        const n = dirty.size;
+        if (saveBtn) saveBtn.disabled = n === 0;
+        if (note)
+          note.textContent = n === 0 ? "" : `${n} unsaved change${n === 1 ? "" : "s"}`;
+      }
+
+      function wireEvents() {
+        document.querySelector(".back-link")?.addEventListener("click", () => {
+          const listHtml = base64ToUtf8(window.RETURN_TO_TICKET_LIST);
+          document.open();
+          document.write(listHtml);
+          document.close();
+        });
+
+        document.querySelector(".open-link")?.addEventListener("click", async (event) => {
+          event.preventDefault();
+          try {
+            const result = await app.openLink(ticket.recordUrl);
+            if (result?.isError) throw new Error("The host denied the link request");
+          } catch (err) {
+            showBanner(
+              "error",
+              `${err.message || "Could not open ServiceNow."} URL: ${ticket.recordUrl}`,
+            );
+          }
+        });
+
+        const form = document.getElementById("ticket-form");
+        form.addEventListener("input", (e) => {
+          const name = e.target.closest("[data-field]")?.dataset.field;
+          if (name) markDirty(name);
+        });
+        form.addEventListener("change", (e) => {
+          const name = e.target.closest("[data-field]")?.dataset.field;
+          if (name) markDirty(name);
+        });
+        form.addEventListener("submit", handleSave);
+
+        document.getElementById("reset-btn").addEventListener("click", () => {
+          dirty.clear();
+          render();
+        });
+
+        document
+          .getElementById("add-entry-btn")
+          .addEventListener("click", handleAddEntry);
+        document
+          .getElementById("upload-attachment-btn")
+          .addEventListener("click", handleUploadAttachment);
+        document.querySelectorAll(".download-attachment").forEach((button) =>
+          button.addEventListener("click", () =>
+            handleDownloadAttachment(button),
+          ),
+        );
+        document.querySelectorAll(".delete-attachment").forEach((button) =>
+          button.addEventListener("click", () =>
+            handleDeleteAttachment(button),
+          ),
+        );
+
+        const toggle = document.getElementById("kind-toggle");
+        toggle.addEventListener("click", (e) => {
+          const kind = e.target?.dataset?.kind;
+          if (!kind) return;
+          composerKind = kind;
+          [...toggle.children].forEach((b) =>
+            b.classList.toggle("active", b.dataset.kind === kind),
+          );
+        });
+
+        updateDirtyState();
+      }
+
+      function collectChangedData() {
+        const data = {};
+        for (const name of dirty) {
+          const field = ticket.fields.find((f) => f.name === name);
+          if (!field) continue;
+          const el = document.getElementById(`f_${name}`);
+          if (!el) continue;
+          if (field.inputType === "boolean") {
+            data[name] = el.checked ? "true" : "false";
+          } else {
+            data[name] = el.value;
+          }
+        }
+        return data;
+      }
+
+      function showBanner(kind, message) {
+        const slot = document.getElementById("banner-slot");
+        if (!slot) return;
+        slot.innerHTML = `<div class="banner ${kind}">${escapeHtml(message)}</div>`;
+      }
+
+      function parsePayload(result) {
+        const text = result?.content?.find((c) => c.type === "text")?.text;
+        if (typeof text !== "string") return null;
+        if (result?.isError) throw new Error(text);
+        try {
+          return JSON.parse(text);
+        } catch {
+          return text;
+        }
+      }
+
+      async function handleSave(e) {
+        e.preventDefault();
+        const data = collectChangedData();
+        if (Object.keys(data).length === 0) return;
+
+        const saveBtn = document.getElementById("save-btn");
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Saving...";
+
+        try {
+          const result = await app.callServerTool({
+            name: "update_record",
+            arguments: {
+              table: ticket.recordTable,
+              sys_id: ticket.sysId,
+              data,
+            },
+          });
+          const record = parsePayload(result);
+          if (record && typeof record === "object" && record.values) {
+            // Refresh local values/displays from the saved record.
+            for (const [name, v] of Object.entries(record.values)) {
+              ticket.values[name] = v.value;
+              ticket.displays[name] = v.display;
+            }
+          }
+          dirty.clear();
+          render();
+          showBanner("success", "Changes saved.");
+        } catch (err) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Save changes";
+          showBanner("error", err.message || "Failed to save changes.");
+        }
+      }
+
+      async function handleAddEntry() {
+        const textarea = document.getElementById("composer-text");
+        const text = textarea.value.trim();
+        if (!text) return;
+
+        const addBtn = document.getElementById("add-entry-btn");
+        addBtn.disabled = true;
+        addBtn.textContent = "Adding...";
+
+        try {
+          const result = await app.callServerTool({
+            name: "add_journal_entry",
+            arguments: {
+              table: ticket.recordTable,
+              activity_table: ticket.table,
+              sys_id: ticket.sysId,
+              field: composerKind,
+              text,
+            },
+          });
+          const payload = parsePayload(result);
+          if (payload && typeof payload === "object" && payload.activity) {
+            ticket.activity = payload.activity;
+          }
+          textarea.value = "";
+          render();
+        } catch (err) {
+          addBtn.disabled = false;
+          addBtn.textContent = "Add";
+          showBanner("error", err.message || "Failed to add entry.");
+        }
+      }
+
+      function bytesToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(offset, offset + chunkSize),
+          );
+        }
+        return btoa(binary);
+      }
+
+      async function handleUploadAttachment() {
+        const input = document.getElementById("attachment-file");
+        const file = input.files?.[0];
+        if (!file) {
+          showBanner("error", "Choose a file to upload.");
+          return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          showBanner("error", "Attachments are limited to 8 MB.");
+          return;
+        }
+        const button = document.getElementById("upload-attachment-btn");
+        button.disabled = true;
+        button.textContent = "Uploading...";
+        try {
+          const dataBase64 = bytesToBase64(await file.arrayBuffer());
+          const result = await app.callServerTool({
+            name: "upload_attachment",
+            arguments: {
+              table: ticket.table,
+              sys_id: ticket.sysId,
+              file_name: file.name,
+              content_type: file.type || "application/octet-stream",
+              data_base64: dataBase64,
+            },
+          });
+          const payload = parsePayload(result);
+          ticket.attachments = payload?.attachments || ticket.attachments;
+          render();
+          showBanner("success", `${file.name} uploaded.`);
+        } catch (err) {
+          button.disabled = false;
+          button.textContent = "Upload";
+          showBanner("error", err.message || "Failed to upload attachment.");
+        }
+      }
+
+      async function handleDownloadAttachment(button) {
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = "Opening...";
+        try {
+          const instanceOrigin = new URL(ticket.recordUrl).origin;
+          const downloadUrl = new URL("/sys_attachment.do", instanceOrigin);
+          downloadUrl.searchParams.set("sys_id", button.dataset.id);
+          await app.openLink(downloadUrl.toString());
+          showBanner("success", "Opened the attachment in ServiceNow.");
+        } catch (err) {
+          showBanner("error", err.message || "Failed to download attachment.");
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      }
+
+      async function handleDeleteAttachment(button) {
+        const fileName = button.dataset.name || "this attachment";
+        if (button.dataset.confirming !== "true") {
+          document
+            .querySelectorAll('.delete-attachment[data-confirming="true"]')
+            .forEach((otherButton) => {
+              otherButton.dataset.confirming = "false";
+              otherButton.textContent = "Delete";
+            });
+          button.dataset.confirming = "true";
+          button.textContent = "Confirm";
+          showBanner(
+            "warning",
+            `Select Confirm again to permanently delete ${fileName}.`,
+          );
+          window.setTimeout(() => {
+            if (button.isConnected && button.dataset.confirming === "true") {
+              button.dataset.confirming = "false";
+              button.textContent = "Delete";
+            }
+          }, 8000);
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Deleting...";
+        try {
+          const result = await app.callServerTool({
+            name: "delete_attachment",
+            arguments: {
+              table: ticket.table,
+              table_sys_id: ticket.sysId,
+              sys_id: button.dataset.id,
+            },
+          });
+          const payload = parsePayload(result);
+          ticket.attachments = payload?.attachments || [];
+          render();
+          showBanner("success", `${fileName} deleted.`);
+        } catch (err) {
+          button.disabled = false;
+          button.dataset.confirming = "false";
+          button.textContent = "Delete";
+          showBanner("error", err.message || "Failed to delete attachment.");
+        }
+      }
+
+      // ---- Boot ----
+      function boot(data) {
+        if (!data || !data.fields) return;
+        ticket = {
+          table: data.table,
+          recordTable: data.recordTable || data.table,
+          sysId: data.sysId,
+          number: data.number || "",
+          isTaskTable: !!data.isTaskTable,
+          fields: data.fields || [],
+          values: { ...(data.values || {}) },
+          displays: { ...(data.displays || {}) },
+          activity: data.activity || [],
+          attachments: data.attachments || [],
+          recordUrl: data.recordUrl || "",
+          accessNotice: data.accessNotice || "",
+        };
+        dirty.clear();
+        render();
+        if (ticket.accessNotice) {
+          showBanner("warning", ticket.accessNotice);
+        }
+      }
+
+      const embedded = getEmbeddedData();
+      if (embedded) boot(embedded);
+
+      app.connect();
+      app.onrenderdata = (data) => {
+        try {
+          if (data.table && data.fields) boot(data);
+        } catch (e) {
+          console.error("Error processing render data:", e);
+        }
+      };
+      app.processQueue();
+    </script>
+  </body>
+</html>
