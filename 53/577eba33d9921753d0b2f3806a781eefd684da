@@ -1,0 +1,41 @@
+mcp/apps-ui/automation-hub/src/scripts/test-schema.ts
+  s_fb8d36f68efea0::t_5524d99fbe14b5 69-79
+  s_fb8d36f68efea0::t_3711f258029231 11
+mcp/apps-ui/automation-hub/src/automationhub/draftSync.ts
+  s_fb8d36f68efea0::t_91f147a477b71b 174-294
+mcp/apps-ui/automation-hub/src/ui/form.html
+  s_fb8d36f68efea0::t_3f5d63770454a1 1550-1561,1563,1565,1581-1587,1589,1595-1623,1629,1631-1655
+  s_fb8d36f68efea0::t_fc0dd91c380c19 1015-1021
+  s_fb8d36f68efea0::t_c266ae08f984cf 861-862,864,868-869
+  s_fb8d36f68efea0::t_09d57e4a4a6493 570
+  s_fb8d36f68efea0::t_229feae59b371e 571
+  s_fb8d36f68efea0::t_2952283a3c247a 782-860,863,865-867,870-875
+  s_fb8d36f68efea0::t_0b3765273ec131 515
+  s_fb8d36f68efea0::t_ffcd9bc824fc5d 1281-1284
+  s_fb8d36f68efea0::t_90d50d4da24c5e 1366-1384,1400,1418-1441
+  s_fb8d36f68efea0::t_0838bc1375782b 1442
+mcp/apps-ui/automation-hub/src/automationhub/formApi.ts
+  s_fb8d36f68efea0::t_e5309f18ec9a2d 8-13,43-57,86,138,145-148,178-215
+  s_fb8d36f68efea0::t_2f325444066c36 7
+mcp/apps-ui/automation-hub/src/index.ts
+  s_fb8d36f68efea0::t_d1d8b2d731638e 138-156
+  s_fb8d36f68efea0::t_3052eeb7062f89 623-668,676
+  s_fb8d36f68efea0::t_f8c61f32cdc900 20,22
+  s_fb8d36f68efea0::t_ea65803f03d344 408,414-415,419,437-442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "53577eba33d9921753d0b2f3806a781eefd684da",
+  "prompts": {},
+  "sessions": {
+    "s_fb8d36f68efea0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d320e115-7341-4717-af4c-cca02c58dbea",
+        "model": "default"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
