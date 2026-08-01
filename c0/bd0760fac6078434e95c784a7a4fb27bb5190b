@@ -1,0 +1,24 @@
+mcp/apps-ui/automation-hub/src/ui/form.html
+  s_fb8d36f68efea0::t_227be435e9f037 526
+  s_fb8d36f68efea0::t_e233c1fc68f01f 789-798,801-811,814,823
+  s_fb8d36f68efea0::t_db17719c7e6cc1 1185-1187
+  s_fb8d36f68efea0::t_fe809cb43f3bff 568
+  s_fb8d36f68efea0::t_46a0b217884ec4 1030,1037-1038,1057,1060-1064,1136-1138,1140-1148
+  s_fb8d36f68efea0::t_7fbc5dff922c75 1298-1300,1312-1314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "c0bd0760fac6078434e95c784a7a4fb27bb5190b",
+  "prompts": {},
+  "sessions": {
+    "s_fb8d36f68efea0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d320e115-7341-4717-af4c-cca02c58dbea",
+        "model": "default"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
