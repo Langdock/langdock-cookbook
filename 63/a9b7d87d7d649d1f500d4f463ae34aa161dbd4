@@ -1,0 +1,19 @@
+mcp/apps/servicenow/README.md
+  s_6e9148b68b74f2::t_8ad04ecdfd5446 159,169,171,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "63a9b7d87d7d649d1f500d4f463ae34aa161dbd4",
+  "prompts": {},
+  "sessions": {
+    "s_6e9148b68b74f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2b703c55-cced-4212-97e2-128b2b348989",
+        "model": "default"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
