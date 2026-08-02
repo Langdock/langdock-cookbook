@@ -37,8 +37,24 @@
       }
 
       .form-container {
-        max-width: 520px;
+        max-width: 920px;
         margin: 0 auto;
+      }
+
+      .form-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 520px);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .form-layout:has(#knowledge-column:not([hidden])) {
+        grid-template-columns: minmax(0, 520px) minmax(280px, 360px);
+      }
+
+      #servicenow-form {
+        grid-column: 1;
+        grid-row: 1;
       }
 
       .form-header {
@@ -127,6 +143,81 @@
         color: var(--fg-muted);
       }
 
+      .reference-control {
+        position: relative;
+      }
+
+      .reference-control input[data-reference-input] {
+        padding-right: 34px;
+      }
+
+      .reference-clear {
+        position: absolute;
+        z-index: 2;
+        top: 5px;
+        right: 5px;
+        width: 26px;
+        height: 26px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--fg-muted);
+        font-size: 16px;
+        cursor: pointer;
+      }
+
+      .reference-clear[hidden] {
+        display: none;
+      }
+
+      .reference-clear:hover {
+        background: #f4f4f5;
+        color: var(--fg);
+      }
+
+      .reference-results {
+        position: absolute;
+        z-index: 50;
+        top: calc(100% + 5px);
+        right: 0;
+        left: 0;
+        max-height: 220px;
+        overflow-y: auto;
+        list-style: none;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--bg);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+      }
+
+      .reference-results[hidden] {
+        display: none;
+      }
+
+      .reference-option {
+        width: 100%;
+        padding: 9px 10px;
+        border: 0;
+        border-bottom: 1px solid #f4f4f5;
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .reference-option:hover,
+      .reference-option[aria-selected="true"] {
+        background: #eff6ff;
+      }
+
+      .reference-message {
+        padding: 10px;
+        color: var(--fg-muted);
+        font-size: 12px;
+      }
+
       .checkbox-wrapper {
         display: flex;
         align-items: center;
@@ -150,6 +241,46 @@
         font-size: 12px;
         color: var(--fg-muted);
         margin-top: 4px;
+      }
+
+      .more-fields {
+        margin-top: 6px;
+        padding-top: 4px;
+        border-top: 1px solid var(--border);
+      }
+
+      .more-fields summary {
+        margin: 8px 0 18px;
+        color: var(--fg-muted);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .more-fields[open] summary {
+        color: var(--fg);
+      }
+
+      .form-section {
+        margin: 0 0 14px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .form-section summary {
+        margin: 0 -12px;
+        padding: 11px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .form-section[open] summary {
+        margin-bottom: 14px;
+        border-bottom: 1px solid var(--border);
       }
 
       .btn {
@@ -202,9 +333,18 @@
         display: flex;
         justify-content: flex-end;
         align-items: center;
-        margin-top: 24px;
-        padding-top: 16px;
+        margin: 24px -8px 0;
+        padding: 14px 8px max(14px, env(safe-area-inset-bottom));
         border-top: 1px solid var(--border);
+      }
+
+      #servicenow-form > .actions {
+        position: sticky;
+        z-index: 20;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 -8px 18px rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(8px);
       }
 
       .loading {
@@ -256,6 +396,609 @@
         color: #b91c1c;
         font-size: 13px;
         line-height: 1.5;
+      }
+
+      .knowledge-panel {
+        padding: 14px;
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+        background: #f8fbff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+      }
+
+      .knowledge-panel[hidden] {
+        display: none;
+      }
+
+      .knowledge-column {
+        grid-column: 2;
+        grid-row: 1;
+        position: sticky;
+        top: 16px;
+      }
+
+      .knowledge-panel.is-updated {
+        animation: knowledge-pulse 0.65s ease-out;
+      }
+
+      @keyframes knowledge-pulse {
+        0% {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+        }
+        100% {
+          border-color: #bfdbfe;
+          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        }
+      }
+
+      .knowledge-panel-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .knowledge-panel-header h2 {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .knowledge-status {
+        font-size: 12px;
+        color: var(--fg-muted);
+      }
+
+      .knowledge-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .knowledge-empty {
+        padding: 18px 10px;
+        color: var(--fg-muted);
+        font-size: 12px;
+        line-height: 1.45;
+        text-align: center;
+      }
+
+      .knowledge-skeleton {
+        height: 88px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background:
+          linear-gradient(
+            100deg,
+            transparent 25%,
+            rgba(255, 255, 255, 0.7) 45%,
+            transparent 65%
+          ),
+          #eef0f3;
+        background-size: 200% 100%;
+        animation: knowledge-shimmer 1.2s ease-in-out infinite;
+      }
+
+      @keyframes knowledge-shimmer {
+        to {
+          background-position-x: -200%;
+        }
+      }
+
+      .knowledge-item {
+        position: relative;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 11px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          transform 0.15s,
+          box-shadow 0.15s;
+      }
+
+      .knowledge-item:hover,
+      .knowledge-item:focus-within {
+        border-color: #60a5fa;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+        transform: translateY(-1px);
+        outline: none;
+      }
+
+      .knowledge-card-reader {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        border: 0;
+        border-radius: inherit;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .knowledge-item > span {
+        position: relative;
+        z-index: 1;
+        pointer-events: none;
+      }
+
+      .knowledge-item-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .knowledge-number {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--fg-muted);
+        letter-spacing: 0.02em;
+      }
+
+      .knowledge-open {
+        position: relative;
+        z-index: 2;
+        pointer-events: auto;
+        padding: 2px 4px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: #2563eb;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      .knowledge-open:hover,
+      .knowledge-open:focus-visible {
+        background: #eff6ff;
+        outline: none;
+      }
+
+      .knowledge-title {
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+
+      .knowledge-excerpt {
+        display: -webkit-box;
+        overflow: hidden;
+        color: #3f3f46;
+        font-size: 12px;
+        line-height: 1.45;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+      }
+
+      .knowledge-title mark,
+      .knowledge-excerpt mark {
+        border-radius: 2px;
+        background: #fef08a;
+        color: inherit;
+        padding: 0 1px;
+      }
+
+      .knowledge-meta {
+        font-size: 12px;
+        color: var(--fg-muted);
+      }
+
+      .knowledge-hint {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--fg-muted);
+        line-height: 1.4;
+      }
+
+      .knowledge-inline-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #1d4ed8;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      .knowledge-inline-status[hidden] {
+        display: none;
+      }
+
+      .knowledge-inline-status:hover {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .knowledge-inline-status:disabled {
+        cursor: default;
+        opacity: 0.72;
+        text-decoration: none;
+      }
+
+      .knowledge-popover {
+        position: fixed;
+        z-index: 100;
+        width: min(420px, calc(100vw - 24px));
+        max-height: min(520px, calc(100vh - 24px));
+        padding: 12px;
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+        background: var(--bg);
+        box-shadow:
+          0 18px 48px rgba(15, 23, 42, 0.18),
+          0 2px 8px rgba(15, 23, 42, 0.08);
+      }
+
+      .knowledge-popover[hidden] {
+        display: none;
+      }
+
+      .knowledge-popover::before {
+        content: "";
+        position: absolute;
+        top: -7px;
+        left: var(--popover-arrow-left, 28px);
+        width: 12px;
+        height: 12px;
+        border-top: 1px solid #bfdbfe;
+        border-left: 1px solid #bfdbfe;
+        background: var(--bg);
+        transform: rotate(45deg);
+      }
+
+      .knowledge-popover[data-placement="top"]::before {
+        top: auto;
+        bottom: -7px;
+        transform: rotate(225deg);
+      }
+
+      .knowledge-popover-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .knowledge-popover-header strong {
+        font-size: 13px;
+      }
+
+      .knowledge-popover-close {
+        width: 26px;
+        height: 26px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--fg-muted);
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .knowledge-popover-close:hover {
+        background: #f4f4f5;
+        color: var(--fg);
+      }
+
+      .knowledge-popover .knowledge-list {
+        max-height: min(420px, calc(100vh - 100px));
+        overflow-y: auto;
+        padding: 1px;
+      }
+
+      .knowledge-reader-backdrop {
+        position: fixed;
+        z-index: 120;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.34);
+        backdrop-filter: blur(2px);
+      }
+
+      .knowledge-reader-backdrop[hidden] {
+        display: none;
+      }
+
+      .knowledge-reader {
+        display: flex;
+        width: min(720px, 100%);
+        max-height: min(760px, calc(100vh - 48px));
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        box-shadow: 0 24px 72px rgba(15, 23, 42, 0.24);
+      }
+
+      .knowledge-reader-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .knowledge-reader-number {
+        margin-bottom: 4px;
+        color: var(--fg-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+      }
+
+      .knowledge-reader-title {
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+
+      .knowledge-reader-actions {
+        display: flex;
+        flex-shrink: 0;
+        gap: 4px;
+      }
+
+      .knowledge-reader-action {
+        width: 30px;
+        height: 30px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--fg-muted);
+        font: inherit;
+        font-size: 17px;
+        cursor: pointer;
+      }
+
+      .knowledge-reader-action:hover {
+        background: #f4f4f5;
+        color: var(--fg);
+      }
+
+      .knowledge-reader-meta {
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border);
+        color: var(--fg-muted);
+        font-size: 12px;
+      }
+
+      .knowledge-reader-content {
+        overflow-y: auto;
+        padding: 20px;
+        color: #27272a;
+        font-size: 14px;
+        line-height: 1.65;
+      }
+
+      .knowledge-reader-loading {
+        color: var(--fg-muted);
+        white-space: pre-wrap;
+      }
+
+      .knowledge-reader-content h1,
+      .knowledge-reader-content h2,
+      .knowledge-reader-content h3,
+      .knowledge-reader-content h4,
+      .knowledge-reader-content h5,
+      .knowledge-reader-content h6 {
+        margin: 1.35em 0 0.55em;
+        color: var(--fg);
+        line-height: 1.3;
+      }
+
+      .knowledge-reader-content h1:first-child,
+      .knowledge-reader-content h2:first-child,
+      .knowledge-reader-content h3:first-child {
+        margin-top: 0;
+      }
+
+      .knowledge-reader-content h1 {
+        font-size: 20px;
+      }
+
+      .knowledge-reader-content h2 {
+        font-size: 18px;
+      }
+
+      .knowledge-reader-content h3 {
+        font-size: 16px;
+      }
+
+      .knowledge-reader-content p {
+        margin: 0 0 1em;
+      }
+
+      .knowledge-reader-content ul,
+      .knowledge-reader-content ol {
+        margin: 0 0 1em;
+        padding-left: 24px;
+      }
+
+      .knowledge-reader-content li + li {
+        margin-top: 0.35em;
+      }
+
+      .knowledge-reader-content a {
+        color: #1d4ed8;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .knowledge-reader-content img {
+        display: block;
+        width: auto;
+        max-width: 100%;
+        height: auto;
+        margin: 16px auto;
+        border-radius: 6px;
+      }
+
+      .knowledge-reader-content blockquote {
+        margin: 1em 0;
+        padding: 10px 14px;
+        border-left: 3px solid #93c5fd;
+        background: #f8fafc;
+        color: #3f3f46;
+      }
+
+      .knowledge-reader-content pre {
+        max-width: 100%;
+        margin: 1em 0;
+        padding: 12px;
+        overflow-x: auto;
+        border-radius: 6px;
+        background: #18181b;
+        color: #f4f4f5;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .knowledge-reader-content code {
+        border-radius: 3px;
+        background: #f4f4f5;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+        padding: 1px 4px;
+      }
+
+      .knowledge-reader-content pre code {
+        background: transparent;
+        padding: 0;
+      }
+
+      .knowledge-reader-content table {
+        width: 100%;
+        margin: 1em 0;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .knowledge-reader-content th,
+      .knowledge-reader-content td {
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .knowledge-reader-content th {
+        background: #f8fafc;
+        font-weight: 600;
+      }
+
+      .knowledge-reader-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 12px;
+        padding: 12px 20px;
+        border-top: 1px solid var(--border);
+        background: #fafafa;
+      }
+
+      .knowledge-reader-navigation {
+        display: flex;
+        gap: 6px;
+      }
+
+      .knowledge-reader-nav {
+        height: 32px;
+        padding: 0 11px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      .knowledge-reader-nav:disabled {
+        cursor: default;
+        opacity: 0.4;
+      }
+
+      @media (max-width: 560px) {
+        .knowledge-reader-backdrop {
+          padding: 10px;
+        }
+
+        .knowledge-reader {
+          max-height: calc(100vh - 20px);
+        }
+
+        .knowledge-reader-navigation {
+          width: 100%;
+          justify-content: space-between;
+        }
+      }
+
+      .knowledge-submit-callout {
+        margin-top: 20px;
+        padding: 10px 12px;
+        border: 1px solid #bfdbfe;
+        border-radius: 6px;
+        background: #eff6ff;
+        color: #1e3a8a;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .knowledge-submit-callout[hidden] {
+        display: none;
+      }
+
+      @media (max-width: 820px) {
+        .form-container {
+          max-width: 520px;
+        }
+
+        .form-layout {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        #servicenow-form {
+          width: 100%;
+          order: 1;
+        }
+
+        .knowledge-column {
+          width: 100%;
+          position: static;
+          order: 0;
+        }
       }
     </style>
   </head>
@@ -380,6 +1123,22 @@
             );
           });
         }
+
+        openLink(url) {
+          const id = ++this._messageId;
+          return new Promise((resolve, reject) => {
+            this._pendingRequests.set(id, { resolve, reject });
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                method: "ui/open-link",
+                id,
+                params: { url },
+              },
+              "*",
+            );
+          });
+        }
       }
 
       const app = new App({ name: "ServiceNow Form", version: "1.0.0" });
@@ -388,6 +1147,43 @@
       let currentTable = "";
       let formFields = [];
       let prefillData = {};
+      let knowledgeSearchTimer = null;
+      let knowledgeSearchSeq = 0;
+      let latestKnowledgeArticles = [];
+      let knowledgePopoverTrigger = null;
+      let knowledgeUiController = null;
+      let knowledgeArticleRequestSeq = 0;
+      let currentKnowledgeArticleIndex = -1;
+      let knowledgeReaderReturnTrigger = null;
+      const knowledgeArticleCache = new Map();
+
+      // Fields that drive contextual knowledge suggestions (mirrors ServiceNow
+      // Contextual Search defaults, which typically watch short description).
+      const KNOWLEDGE_SEARCH_FIELDS = new Set([
+        "short_description",
+        "description",
+      ]);
+      const PRIMARY_FORM_FIELDS = [
+        "short_description",
+        "description",
+        "caller_id",
+        "category",
+        "subcategory",
+        "configuration_item",
+        "cmdb_ci",
+        "service",
+        "business_service",
+        "service_offering",
+        "impact",
+        "urgency",
+        "priority",
+        "severity",
+        "assignment_group",
+        "assigned_to",
+        "state",
+      ];
+      const KNOWLEDGE_MIN_CHARS = 3;
+      const KNOWLEDGE_DEBOUNCE_MS = 450;
 
       function parseToolTextPayload(text) {
         if (typeof text !== "string") return null;
@@ -481,28 +1277,179 @@
         return str.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       }
 
+      function referenceTableText(value) {
+        if (typeof value === "string") return value;
+        if (!value || typeof value !== "object") return "";
+        for (const key of [
+          "display",
+          "display_value",
+          "label",
+          "name",
+          "table",
+          "value",
+        ]) {
+          const text = referenceTableText(value[key]);
+          if (text) return text;
+        }
+        return "";
+      }
+
       function renderForm(schema) {
+        if (knowledgeSearchTimer) clearTimeout(knowledgeSearchTimer);
+        closeKnowledgeReader();
+        closeKnowledgePopover();
+        knowledgeSearchSeq += 1;
+        latestKnowledgeArticles = [];
         const editableFields = schema.fields.filter((f) => !f.readOnly);
         const tableLabel = toTitleCase(schema.table);
+        const hasKnowledgeFields = editableFields.some((f) =>
+          KNOWLEDGE_SEARCH_FIELDS.has(f.name),
+        );
+        const primaryNames = new Set(PRIMARY_FORM_FIELDS);
+        const primaryFields = editableFields
+          .filter((field) => field.required || primaryNames.has(field.name))
+          .sort((left, right) => {
+            const leftIndex = PRIMARY_FORM_FIELDS.indexOf(left.name);
+            const rightIndex = PRIMARY_FORM_FIELDS.indexOf(right.name);
+            if (leftIndex === -1 && rightIndex === -1) return 0;
+            if (leftIndex === -1) return 1;
+            if (rightIndex === -1) return -1;
+            return leftIndex - rightIndex;
+          });
+        const primaryFieldNames = new Set(
+          primaryFields.map((field) => field.name),
+        );
+        const additionalFields = editableFields.filter(
+          (field) => !primaryFieldNames.has(field.name),
+        );
+        const fieldByName = new Map(
+          editableFields.map((field) => [field.name, field]),
+        );
+        const layoutSections = (Array.isArray(schema.sections)
+          ? schema.sections
+          : []
+        )
+          .map((section) => ({
+            title: section.title || "Details",
+            fields: (section.fields || [])
+              .map((name) => fieldByName.get(name))
+              .filter(Boolean),
+          }))
+          .filter((section) => section.fields.length > 0);
 
         let html = `
         <div class="form-header">
-          <h1>${tableLabel}</h1>
+          <h1>${escapeHtml(tableLabel)}</h1>
           <p>Fill in the fields below to create a new record</p>
         </div>
+        <div class="form-layout">
+        ${
+          hasKnowledgeFields
+            ? `<aside id="knowledge-column" class="knowledge-column" hidden>
+        <div id="knowledge-panel" class="knowledge-panel" hidden aria-live="polite">
+          <div class="knowledge-panel-header">
+            <h2>Related knowledge</h2>
+            <span id="knowledge-status" class="knowledge-status"></span>
+          </div>
+          <ul id="knowledge-list" class="knowledge-list"></ul>
+          <p class="knowledge-hint">Results update from the short description and description. Open an article to check for an existing fix.</p>
+        </div>
+        </aside>`
+            : ""
+        }
         <form id="servicenow-form">
       `;
 
-        for (const field of editableFields) {
-          html += renderField(field);
+        if (layoutSections.length > 0) {
+          const renderedFields = new Set();
+          layoutSections.forEach((section, index) => {
+            const sectionRequired = section.fields.some(
+              (field) => field.required,
+            );
+            html += `<details class="form-section" ${index === 0 || sectionRequired ? "open" : ""}>
+              <summary>${escapeHtml(section.title)} (${section.fields.length})</summary>`;
+            for (const field of section.fields) {
+              if (renderedFields.has(field.name)) continue;
+              renderedFields.add(field.name);
+              html += renderField(field);
+            }
+            html += `</details>`;
+          });
+          const remainingFields = editableFields.filter(
+            (field) => !renderedFields.has(field.name),
+          );
+          if (remainingFields.length > 0) {
+            html += `<details class="more-fields">
+              <summary>Other fields (${remainingFields.length})</summary>`;
+            for (const field of remainingFields) {
+              html += renderField(field);
+            }
+            html += `</details>`;
+          }
+        } else {
+          for (const field of primaryFields) {
+            html += renderField(field);
+          }
+          if (additionalFields.length > 0) {
+            html += `<details class="more-fields">
+              <summary>More fields (${additionalFields.length})</summary>`;
+            for (const field of additionalFields) {
+              html += renderField(field);
+            }
+            html += `</details>`;
+          }
         }
 
         html += `
+        ${
+          hasKnowledgeFields
+            ? `<div id="knowledge-submit-callout" class="knowledge-submit-callout" hidden></div>`
+            : ""
+        }
         <div class="actions">
           <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset</button>
           <button type="submit" class="btn btn-primary" id="submit-btn">Submit</button>
         </div>
         </form>
+        ${
+          hasKnowledgeFields
+            ? `<div id="knowledge-popover" class="knowledge-popover" role="dialog" aria-label="Related knowledge articles" hidden>
+          <div class="knowledge-popover-header">
+            <strong>Related knowledge</strong>
+            <button type="button" id="knowledge-popover-close" class="knowledge-popover-close" aria-label="Close related knowledge">×</button>
+          </div>
+          <ul id="knowledge-popover-list" class="knowledge-list"></ul>
+        </div>`
+            : ""
+        }
+        ${
+          hasKnowledgeFields
+            ? `<div id="knowledge-reader-backdrop" class="knowledge-reader-backdrop" hidden>
+          <article class="knowledge-reader" role="dialog" aria-modal="true" aria-labelledby="knowledge-reader-title">
+            <header class="knowledge-reader-header">
+              <div>
+                <div id="knowledge-reader-number" class="knowledge-reader-number">KNOWLEDGE</div>
+                <h2 id="knowledge-reader-title" class="knowledge-reader-title">Loading article…</h2>
+              </div>
+              <div class="knowledge-reader-actions">
+                <button type="button" id="knowledge-reader-external" class="knowledge-reader-action" aria-label="Open article in ServiceNow" title="Open in ServiceNow">↗</button>
+                <button type="button" id="knowledge-reader-close" class="knowledge-reader-action" aria-label="Close article">×</button>
+              </div>
+            </header>
+            <div id="knowledge-reader-meta" class="knowledge-reader-meta"></div>
+            <div id="knowledge-reader-content" class="knowledge-reader-content knowledge-reader-loading">Loading article…</div>
+            <footer class="knowledge-reader-footer">
+              <div class="knowledge-reader-navigation">
+                <button type="button" id="knowledge-reader-back" class="knowledge-reader-nav">Back to suggestions</button>
+                <button type="button" id="knowledge-reader-previous" class="knowledge-reader-nav" aria-label="Previous article">← Previous</button>
+                <button type="button" id="knowledge-reader-next" class="knowledge-reader-nav" aria-label="Next article">Next →</button>
+              </div>
+            </footer>
+          </article>
+        </div>`
+            : ""
+        }
+        </div>
       `;
 
         contentEl.innerHTML = html;
@@ -510,6 +1457,12 @@
         document
           .getElementById("servicenow-form")
           .addEventListener("submit", handleSubmit);
+        wireReferenceAutocomplete();
+
+        if (hasKnowledgeFields) {
+          wireKnowledgeSearch();
+          scheduleKnowledgeSearch();
+        }
       }
 
       function renderField(field) {
@@ -541,7 +1494,9 @@
             const options = (field.choices || [])
               .map(
                 (c) =>
-                  `<option value="${c.value}"${c.value === defaultVal ? " selected" : ""}>${c.label}</option>`,
+                  `<option value="${escapeHtml(c.value)}"${
+                    String(c.value) === String(defaultVal) ? " selected" : ""
+                  }>${escapeHtml(c.label)}</option>`,
               )
               .join("");
             input = `<select name="${field.name}" id="${field.name}" ${field.required ? "required" : ""}>
@@ -555,7 +1510,7 @@
               defaultVal === "true" || defaultVal === true ? "checked" : "";
             input = `<label class="checkbox-wrapper" for="${field.name}">
             <input type="checkbox" name="${field.name}" id="${field.name}" value="true" ${isChecked}>
-            <span>${field.label}</span>
+            <span>${escapeHtml(field.label)}</span>
           </label>`;
             return `<div class="form-group">${input}</div>`;
 
@@ -572,13 +1527,19 @@
             break;
 
           case "reference":
-            const refTable =
-              typeof field.referenceTable === "string"
-                ? field.referenceTable
-                : field.referenceTable?.name ||
-                  field.referenceTable?.label ||
-                  "";
-            input = `<input type="text" name="${field.name}" id="${field.name}" placeholder="${refTable ? "Search " + toTitleCase(refTable) + "..." : "Enter sys_id"}" value="${safeVal}" ${maxLength} ${field.required ? "required" : ""}>`;
+            const refTable = referenceTableText(field.referenceTable);
+            if (!refTable) {
+              input = `<input type="text" name="${field.name}" id="${field.name}" placeholder="Enter sys_id" value="${safeVal}" ${maxLength} ${field.required ? "required" : ""}>`;
+              break;
+            }
+            const referenceResultsId = `${field.name}__results`;
+            input = `<div class="reference-control">
+              <input type="hidden" name="${field.name}" id="${field.name}" value="${safeVal}">
+              <input type="text" id="${field.name}__display" data-reference-input data-reference-table="${escapeHtml(refTable)}" data-reference-target="${field.name}" data-initial-reference="${safeVal}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${referenceResultsId}" autocomplete="off" placeholder="${refTable ? "Search " + toTitleCase(refTable) + "..." : "Search records..."}" value="${safeVal}" ${field.required ? "required" : ""}>
+              <button type="button" class="reference-clear" data-reference-clear aria-label="Clear ${escapeHtml(field.label)}" ${safeVal ? "" : "hidden"}>×</button>
+              <ul id="${referenceResultsId}" class="reference-results" role="listbox" hidden></ul>
+            </div>
+            <div class="hint" data-reference-status></div>`;
             break;
 
           default:
@@ -587,23 +1548,832 @@
 
         let hint = "";
         if (field.hint) {
-          hint = `<div class="hint">${field.hint}</div>`;
+          hint = `<div class="hint">${escapeHtml(field.hint)}</div>`;
         } else if (field.referenceTable) {
-          const refName =
-            typeof field.referenceTable === "string"
-              ? field.referenceTable
-              : field.referenceTable?.name || field.referenceTable?.label || "";
+          const refName = referenceTableText(field.referenceTable);
           if (refName)
-            hint = `<div class="hint">References ${toTitleCase(refName)}</div>`;
+            hint = `<div class="hint">References ${escapeHtml(toTitleCase(refName))}</div>`;
         }
+        const knowledgeStatus = KNOWLEDGE_SEARCH_FIELDS.has(field.name)
+          ? `<button type="button" class="knowledge-inline-status" data-knowledge-status hidden></button>`
+          : "";
 
         return `
         <div class="form-group">
-          <label for="${field.name}">${field.label}${required}</label>
+          <label for="${field.name}">${escapeHtml(field.label)}${required}</label>
           ${input}
           ${hint}
+          ${knowledgeStatus}
         </div>
       `;
+      }
+
+      function wireReferenceAutocomplete() {
+        document.querySelectorAll("[data-reference-input]").forEach((input) => {
+          const control = input.closest(".reference-control");
+          const table = input.dataset.referenceTable;
+          const hidden = document.getElementById(
+            input.dataset.referenceTarget || "",
+          );
+          const resultsList = control?.querySelector(".reference-results");
+          const clearButton = control?.querySelector("[data-reference-clear]");
+          const status = control?.nextElementSibling?.matches(
+            "[data-reference-status]",
+          )
+            ? control.nextElementSibling
+            : null;
+          if (
+            !control ||
+            !table ||
+            !hidden ||
+            !resultsList ||
+            !clearButton
+          ) {
+            return;
+          }
+
+          let timer = null;
+          let requestSeq = 0;
+          let results = [];
+          let activeIndex = -1;
+
+          const setStatus = (message) => {
+            if (status) status.textContent = message;
+          };
+          const closeResults = () => {
+            resultsList.hidden = true;
+            input.setAttribute("aria-expanded", "false");
+            activeIndex = -1;
+          };
+          const setActiveResult = (index) => {
+            const options = resultsList.querySelectorAll(".reference-option");
+            if (options.length === 0) return;
+            activeIndex = Math.max(0, Math.min(index, options.length - 1));
+            options.forEach((option, optionIndex) => {
+              option.setAttribute(
+                "aria-selected",
+                optionIndex === activeIndex ? "true" : "false",
+              );
+            });
+            options[activeIndex]?.scrollIntoView({ block: "nearest" });
+          };
+          const selectResult = (record) => {
+            hidden.value = record.sysId;
+            input.value = record.displayValue;
+            input.setCustomValidity("");
+            clearButton.hidden = false;
+            setStatus(`Selected ${record.displayValue}`);
+            closeResults();
+          };
+          const renderResults = () => {
+            if (results.length === 0) {
+              resultsList.innerHTML =
+                '<li class="reference-message">No matching records</li>';
+            } else {
+              resultsList.innerHTML = results
+                .map(
+                  (record, index) =>
+                    `<li><button type="button" class="reference-option" role="option" data-reference-index="${index}" aria-selected="false">${escapeHtml(record.displayValue)}</button></li>`,
+                )
+                .join("");
+            }
+            resultsList.hidden = false;
+            input.setAttribute("aria-expanded", "true");
+          };
+          const runSearch = async (value, initialReference = "") => {
+            const query = value.trim();
+            if (query.length < 2) {
+              closeResults();
+              setStatus(query ? "Type at least 2 characters" : "");
+              return;
+            }
+            const seq = ++requestSeq;
+            setStatus("Searching…");
+            try {
+              const result = await app.callServerTool({
+                name: "search_reference_records",
+                arguments: { table, query, limit: 8 },
+              });
+              if (seq !== requestSeq) return;
+              if (result.isError) {
+                const errorText = result.content?.find(
+                  (item) => item.type === "text",
+                )?.text;
+                throw new Error(errorText || "Reference search failed");
+              }
+              const textContent = result.content?.find(
+                (item) => item.type === "text",
+              )?.text;
+              const payload = parseToolTextPayload(textContent);
+              results = Array.isArray(payload?.results) ? payload.results : [];
+              if (initialReference) {
+                const initialRecord = results.find(
+                  (record) =>
+                    record.sysId === initialReference ||
+                    record.displayValue.toLowerCase() ===
+                      initialReference.toLowerCase(),
+                );
+                if (initialRecord) {
+                  selectResult(initialRecord);
+                  return;
+                }
+              }
+              setStatus(
+                results.length === 0
+                  ? "No matching records"
+                  : `${results.length} result${results.length === 1 ? "" : "s"}`,
+              );
+              renderResults();
+            } catch (error) {
+              if (seq !== requestSeq) return;
+              results = [];
+              closeResults();
+              setStatus(error.message || "Reference search unavailable");
+            }
+          };
+
+          input.addEventListener("input", () => {
+            const value = input.value.trim();
+            hidden.value = "";
+            clearButton.hidden = value.length === 0;
+            if (/^[0-9a-f]{32}$/i.test(value)) {
+              hidden.value = value;
+              input.setCustomValidity("");
+            } else {
+              input.setCustomValidity(
+                value ? "Select a record from the suggestions." : "",
+              );
+            }
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => runSearch(value), 250);
+          });
+          input.addEventListener("focus", () => {
+            if (!hidden.value && input.value.trim().length >= 2) {
+              runSearch(input.value);
+            }
+          });
+          input.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              if (resultsList.hidden) runSearch(input.value);
+              else setActiveResult(activeIndex + 1);
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveResult(activeIndex <= 0 ? results.length - 1 : activeIndex - 1);
+            } else if (event.key === "Enter" && activeIndex >= 0) {
+              event.preventDefault();
+              if (results[activeIndex]) selectResult(results[activeIndex]);
+            } else if (event.key === "Escape") {
+              closeResults();
+            }
+          });
+          input.addEventListener("blur", () => {
+            setTimeout(closeResults, 150);
+          });
+          resultsList.addEventListener("click", (event) => {
+            const option = event.target.closest("[data-reference-index]");
+            if (!option) return;
+            const record = results[Number(option.dataset.referenceIndex)];
+            if (record) selectResult(record);
+          });
+          clearButton.addEventListener("click", () => {
+            requestSeq += 1;
+            hidden.value = "";
+            input.value = "";
+            input.setCustomValidity("");
+            clearButton.hidden = true;
+            setStatus("");
+            closeResults();
+            input.focus();
+          });
+
+          const initialValue = input.dataset.initialReference || "";
+          if (/^[0-9a-f]{32}$/i.test(initialValue)) {
+            runSearch(initialValue, initialValue);
+          } else if (initialValue) {
+            hidden.value = "";
+            input.setCustomValidity("Select a record from the suggestions.");
+            runSearch(initialValue, initialValue);
+          }
+        });
+      }
+
+      function collectKnowledgeContext() {
+        const shortDescription = String(
+          document.getElementById("short_description")?.value || "",
+        ).trim();
+        const description = String(
+          document.getElementById("description")?.value || "",
+        ).trim();
+        const query = `${shortDescription} ${description}`
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 500);
+        return {
+          query,
+          shortDescription: shortDescription.slice(0, 500),
+          description: description.slice(0, 2000),
+        };
+      }
+
+      function hasSpecificKnowledgeContext(context) {
+        return context.query.length >= KNOWLEDGE_MIN_CHARS;
+      }
+
+      function closeKnowledgePopover() {
+        const popover = document.getElementById("knowledge-popover");
+        if (knowledgePopoverTrigger) {
+          knowledgePopoverTrigger.setAttribute("aria-expanded", "false");
+        }
+        knowledgePopoverTrigger = null;
+        if (popover) popover.hidden = true;
+      }
+
+      function positionKnowledgePopover(trigger) {
+        const popover = document.getElementById("knowledge-popover");
+        if (!popover) return;
+        const viewportPadding = 12;
+        const gap = 10;
+        popover.hidden = false;
+        popover.style.top = `${viewportPadding}px`;
+        popover.style.left = `${viewportPadding}px`;
+
+        const triggerRect = trigger.getBoundingClientRect();
+        const popoverRect = popover.getBoundingClientRect();
+        const fitsBelow =
+          triggerRect.bottom + gap + popoverRect.height <=
+          window.innerHeight - viewportPadding;
+        const placement =
+          fitsBelow || triggerRect.top < popoverRect.height + gap
+            ? "bottom"
+            : "top";
+        const top =
+          placement === "bottom"
+            ? Math.min(
+                triggerRect.bottom + gap,
+                window.innerHeight - popoverRect.height - viewportPadding,
+              )
+            : Math.max(
+                viewportPadding,
+                triggerRect.top - popoverRect.height - gap,
+              );
+        const left = Math.min(
+          Math.max(viewportPadding, triggerRect.left),
+          window.innerWidth - popoverRect.width - viewportPadding,
+        );
+        const arrowLeft = Math.min(
+          Math.max(18, triggerRect.left + triggerRect.width / 2 - left - 6),
+          popoverRect.width - 30,
+        );
+
+        popover.dataset.placement = placement;
+        popover.style.top = `${Math.max(viewportPadding, top)}px`;
+        popover.style.left = `${Math.max(viewportPadding, left)}px`;
+        popover.style.setProperty("--popover-arrow-left", `${arrowLeft}px`);
+      }
+
+      function toggleKnowledgePopover(trigger) {
+        if (latestKnowledgeArticles.length === 0) return;
+        const popover = document.getElementById("knowledge-popover");
+        if (!popover) return;
+        if (!popover.hidden && knowledgePopoverTrigger === trigger) {
+          closeKnowledgePopover();
+          return;
+        }
+
+        document.querySelectorAll("[data-knowledge-status]").forEach((status) => {
+          status.setAttribute("aria-expanded", "false");
+        });
+        knowledgePopoverTrigger = trigger;
+        trigger.setAttribute("aria-expanded", "true");
+        positionKnowledgePopover(trigger);
+      }
+
+      async function openServiceNowArticle(url) {
+        if (!url) return;
+        closeKnowledgePopover();
+        try {
+          await app.openLink(url);
+        } catch (error) {
+          const status = document.getElementById("knowledge-status");
+          if (status) {
+            status.textContent =
+              error.message || "Could not open article in ServiceNow.";
+          }
+        }
+      }
+
+      function closeKnowledgeReader() {
+        knowledgeArticleRequestSeq += 1;
+        currentKnowledgeArticleIndex = -1;
+        const backdrop = document.getElementById("knowledge-reader-backdrop");
+        if (backdrop) backdrop.hidden = true;
+      }
+
+      function updateKnowledgeReaderNavigation() {
+        const previous = document.getElementById("knowledge-reader-previous");
+        const next = document.getElementById("knowledge-reader-next");
+        if (previous) previous.disabled = currentKnowledgeArticleIndex <= 0;
+        if (next) {
+          next.disabled =
+            currentKnowledgeArticleIndex < 0 ||
+            currentKnowledgeArticleIndex >= latestKnowledgeArticles.length - 1;
+        }
+      }
+
+      function backToKnowledgeSuggestions() {
+        const trigger = knowledgeReaderReturnTrigger;
+        closeKnowledgeReader();
+        knowledgeReaderReturnTrigger = null;
+        if (trigger?.isConnected && latestKnowledgeArticles.length > 0) {
+          toggleKnowledgePopover(trigger);
+        }
+      }
+
+      function openAdjacentKnowledgeArticle(offset) {
+        const nextIndex = currentKnowledgeArticleIndex + offset;
+        const article = latestKnowledgeArticles[nextIndex];
+        if (article) openKnowledgeArticleInApp(article.sysId);
+      }
+
+      function renderKnowledgeArticle(article) {
+        const number = document.getElementById("knowledge-reader-number");
+        const title = document.getElementById("knowledge-reader-title");
+        const meta = document.getElementById("knowledge-reader-meta");
+        const content = document.getElementById("knowledge-reader-content");
+        const external = document.getElementById("knowledge-reader-external");
+        if (!number || !title || !meta || !content || !external) {
+          return;
+        }
+
+        number.textContent = article.number || "KNOWLEDGE";
+        title.textContent =
+          article.shortDescription || "Untitled knowledge article";
+        const metaParts = [];
+        if (article.knowledgeBase) metaParts.push(article.knowledgeBase);
+        if (article.category) metaParts.push(article.category);
+        if (article.updated) metaParts.push(`Updated ${article.updated}`);
+        meta.textContent = metaParts.join(" · ");
+        if (article.contentHtml) {
+          content.innerHTML = article.contentHtml;
+        } else {
+          content.textContent =
+            article.content || "This article has no readable body content.";
+        }
+        content.classList.remove("knowledge-reader-loading");
+        external.dataset.articleUrl = article.recordUrl || "";
+        external.disabled = !article.recordUrl;
+      }
+
+      async function openKnowledgeArticleInApp(sysId) {
+        const summary = latestKnowledgeArticles.find(
+          (article) => article.sysId === sysId,
+        );
+        const articleIndex = latestKnowledgeArticles.findIndex(
+          (article) => article.sysId === sysId,
+        );
+        const backdrop = document.getElementById("knowledge-reader-backdrop");
+        const number = document.getElementById("knowledge-reader-number");
+        const title = document.getElementById("knowledge-reader-title");
+        const meta = document.getElementById("knowledge-reader-meta");
+        const content = document.getElementById("knowledge-reader-content");
+        const external = document.getElementById("knowledge-reader-external");
+        if (
+          !backdrop ||
+          !number ||
+          !title ||
+          !meta ||
+          !content ||
+          !external
+        ) {
+          return;
+        }
+
+        if (backdrop.hidden) {
+          knowledgeReaderReturnTrigger = knowledgePopoverTrigger;
+        }
+        closeKnowledgePopover();
+        currentKnowledgeArticleIndex = articleIndex;
+        updateKnowledgeReaderNavigation();
+        const seq = ++knowledgeArticleRequestSeq;
+        number.textContent = summary?.number || "KNOWLEDGE";
+        title.textContent =
+          summary?.shortDescription || "Loading knowledge article…";
+        meta.textContent = "";
+        content.textContent = "Loading article…";
+        content.classList.add("knowledge-reader-loading");
+        external.dataset.articleUrl = summary?.recordUrl || "";
+        external.disabled = !summary?.recordUrl;
+        backdrop.hidden = false;
+
+        try {
+          const cachedArticle = knowledgeArticleCache.get(sysId);
+          if (cachedArticle) {
+            renderKnowledgeArticle(cachedArticle);
+            return;
+          }
+          const result = await app.callServerTool({
+            name: "get_knowledge_article",
+            arguments: { sys_id: sysId },
+          });
+          if (seq !== knowledgeArticleRequestSeq) return;
+          if (result.isError) {
+            const errorText = result.content?.find(
+              (item) => item.type === "text",
+            )?.text;
+            throw new Error(
+              friendlyKnowledgeError(
+                errorText || "Could not load knowledge article",
+              ),
+            );
+          }
+          const textContent = result.content?.find(
+            (item) => item.type === "text",
+          )?.text;
+          const article = parseToolTextPayload(textContent);
+          if (!article || typeof article !== "object") {
+            throw new Error("Unexpected knowledge article response");
+          }
+
+          knowledgeArticleCache.set(sysId, article);
+          renderKnowledgeArticle(article);
+        } catch (error) {
+          if (seq !== knowledgeArticleRequestSeq) return;
+          content.textContent = friendlyKnowledgeError(
+            error.message || "Could not load knowledge article.",
+          );
+          content.classList.remove("knowledge-reader-loading");
+        }
+      }
+
+      function friendlyKnowledgeError(message) {
+        const text = String(message || "");
+        if (/permission|403/i.test(text)) {
+          return "You do not have permission to read this knowledge article.";
+        }
+        if (/not found|404/i.test(text)) {
+          return "This knowledge article was not found.";
+        }
+        if (/inactive|unpublished|not available/i.test(text)) {
+          return "This knowledge article is not available (inactive or unpublished).";
+        }
+        if (/ServiceNow API error/i.test(text)) {
+          return "Could not load this knowledge article right now.";
+        }
+        return text.replace(/^Error:\s*/i, "") || "Could not load knowledge article.";
+      }
+
+      function handleKnowledgeListClick(event) {
+        const external = event.target.closest("[data-article-url]");
+        if (external) {
+          event.stopPropagation();
+          openServiceNowArticle(external.getAttribute("data-article-url"));
+          return;
+        }
+        const card = event.target.closest("[data-article-sys-id]");
+        if (card) {
+          openKnowledgeArticleInApp(card.getAttribute("data-article-sys-id"));
+        }
+      }
+
+      function wireKnowledgeSearch() {
+        knowledgeUiController?.abort();
+        knowledgeUiController = new AbortController();
+        const { signal } = knowledgeUiController;
+
+        for (const name of KNOWLEDGE_SEARCH_FIELDS) {
+          const el = document.getElementById(name);
+          if (!el) continue;
+          el.addEventListener("input", scheduleKnowledgeSearch, { signal });
+          el.addEventListener("change", scheduleKnowledgeSearch, { signal });
+        }
+
+        document
+          .getElementById("knowledge-list")
+          ?.addEventListener("click", handleKnowledgeListClick, { signal });
+        document
+          .getElementById("knowledge-popover-list")
+          ?.addEventListener("click", handleKnowledgeListClick, { signal });
+
+        document.querySelectorAll("[data-knowledge-status]").forEach((status) => {
+          status.setAttribute("aria-haspopup", "dialog");
+          status.setAttribute("aria-expanded", "false");
+          status.addEventListener(
+            "click",
+            () => toggleKnowledgePopover(status),
+            { signal },
+          );
+        });
+
+        document
+          .getElementById("knowledge-popover-close")
+          ?.addEventListener("click", closeKnowledgePopover, { signal });
+        document
+          .getElementById("knowledge-reader-close")
+          ?.addEventListener("click", closeKnowledgeReader, { signal });
+        document
+          .getElementById("knowledge-reader-back")
+          ?.addEventListener("click", backToKnowledgeSuggestions, { signal });
+        document
+          .getElementById("knowledge-reader-previous")
+          ?.addEventListener(
+            "click",
+            () => openAdjacentKnowledgeArticle(-1),
+            { signal },
+          );
+        document
+          .getElementById("knowledge-reader-next")
+          ?.addEventListener(
+            "click",
+            () => openAdjacentKnowledgeArticle(1),
+            { signal },
+          );
+        document
+          .getElementById("knowledge-reader-external")
+          ?.addEventListener(
+            "click",
+            (event) =>
+              openServiceNowArticle(event.currentTarget.dataset.articleUrl),
+            { signal },
+          );
+        document
+          .getElementById("knowledge-reader-content")
+          ?.addEventListener(
+            "click",
+            (event) => {
+              const link = event.target.closest("a[href]");
+              if (!link) return;
+              event.preventDefault();
+              openServiceNowArticle(link.getAttribute("href"));
+            },
+            { signal },
+          );
+        document
+          .getElementById("knowledge-reader-backdrop")
+          ?.addEventListener(
+            "click",
+            (event) => {
+              if (event.target === event.currentTarget) closeKnowledgeReader();
+            },
+            { signal },
+          );
+        document.addEventListener(
+          "click",
+          (event) => {
+            if (
+              event.target.closest("#knowledge-popover") ||
+              event.target.closest("[data-knowledge-status]")
+            ) {
+              return;
+            }
+            closeKnowledgePopover();
+          },
+          { signal },
+        );
+        document.addEventListener(
+          "keydown",
+          (event) => {
+            if (event.key === "Escape") {
+              closeKnowledgeReader();
+              closeKnowledgePopover();
+            }
+          },
+          { signal },
+        );
+        window.addEventListener("resize", closeKnowledgePopover, { signal });
+      }
+
+      function scheduleKnowledgeSearch() {
+        if (knowledgeSearchTimer) clearTimeout(knowledgeSearchTimer);
+        closeKnowledgePopover();
+        knowledgeSearchTimer = setTimeout(
+          runKnowledgeSearch,
+          KNOWLEDGE_DEBOUNCE_MS,
+        );
+      }
+
+      function updateInlineKnowledgeStatus(text, visible, actionable = false) {
+        document.querySelectorAll("[data-knowledge-status]").forEach((status) => {
+          status.textContent = text;
+          status.hidden = !visible;
+          status.disabled = !actionable;
+        });
+      }
+
+      function updateKnowledgeSubmitCallout(count) {
+        const callout = document.getElementById("knowledge-submit-callout");
+        if (!callout) return;
+        callout.hidden = count === 0;
+        callout.textContent =
+          count === 0
+            ? ""
+            : `${count} related article${count === 1 ? "" : "s"} may already contain a fix. Consider reviewing the suggestions before submitting this record.`;
+      }
+
+      function pulseKnowledgePanel(panel) {
+        panel.classList.remove("is-updated");
+        requestAnimationFrame(() => panel.classList.add("is-updated"));
+      }
+
+      function highlightMatches(value, terms) {
+        const text = String(value || "");
+        const usableTerms = [...new Set(terms || [])]
+          .filter(Boolean)
+          .sort((left, right) => right.length - left.length);
+        if (usableTerms.length === 0) return escapeHtml(text);
+        const pattern = usableTerms
+          .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+        const regex = new RegExp(`(${pattern})`, "gi");
+        return text
+          .split(regex)
+          .map((part, index) =>
+            index % 2 === 1
+              ? `<mark>${escapeHtml(part)}</mark>`
+              : escapeHtml(part),
+          )
+          .join("");
+      }
+
+      function knowledgeSkeletonHtml() {
+        return Array.from(
+          { length: 3 },
+          () => '<li class="knowledge-skeleton" aria-hidden="true"></li>',
+        ).join("");
+      }
+
+      function knowledgeMessageHtml(message) {
+        return `<li class="knowledge-empty">${escapeHtml(message)}</li>`;
+      }
+
+      async function runKnowledgeSearch() {
+        const panel = document.getElementById("knowledge-panel");
+        const column = document.getElementById("knowledge-column");
+        const list = document.getElementById("knowledge-list");
+        const status = document.getElementById("knowledge-status");
+        if (!panel || !column || !list || !status) return;
+
+        const seq = ++knowledgeSearchSeq;
+        const context = collectKnowledgeContext();
+        if (!hasSpecificKnowledgeContext(context)) {
+          latestKnowledgeArticles = [];
+          currentKnowledgeArticleIndex = -1;
+          updateKnowledgeReaderNavigation();
+          column.hidden = true;
+          panel.hidden = true;
+          list.innerHTML = "";
+          const popoverList = document.getElementById(
+            "knowledge-popover-list",
+          );
+          if (popoverList) popoverList.innerHTML = "";
+          status.textContent = "";
+          updateInlineKnowledgeStatus("", false);
+          updateKnowledgeSubmitCallout(0);
+          return;
+        }
+
+        column.hidden = false;
+        panel.hidden = false;
+        status.textContent =
+          latestKnowledgeArticles.length > 0 ? "Refreshing…" : "Searching…";
+        if (latestKnowledgeArticles.length === 0) {
+          list.innerHTML = knowledgeSkeletonHtml();
+        }
+        updateInlineKnowledgeStatus(
+          "Searching related knowledge…",
+          true,
+          latestKnowledgeArticles.length > 0,
+        );
+
+        try {
+          const result = await app.callServerTool({
+            name: "search_knowledge",
+            arguments: {
+              query: context.query,
+              short_description: context.shortDescription,
+              description: context.description,
+              limit: 5,
+            },
+          });
+
+          if (seq !== knowledgeSearchSeq) return;
+          if (result.isError) {
+            const errorText = result.content?.find(
+              (content) => content.type === "text",
+            )?.text;
+            throw new Error(errorText || "Knowledge search failed");
+          }
+
+          const textContent = result.content?.find(
+            (c) => c.type === "text",
+          )?.text;
+          const payload = parseToolTextPayload(textContent);
+          const articles = Array.isArray(payload?.articles)
+            ? payload.articles
+            : [];
+          const openSysId =
+            currentKnowledgeArticleIndex >= 0
+              ? latestKnowledgeArticles[currentKnowledgeArticleIndex]?.sysId
+              : null;
+          latestKnowledgeArticles = articles;
+          if (openSysId) {
+            currentKnowledgeArticleIndex = articles.findIndex(
+              (article) => article.sysId === openSysId,
+            );
+          }
+          updateKnowledgeReaderNavigation();
+
+          if (articles.length === 0) {
+            list.innerHTML = knowledgeMessageHtml(
+              "No related articles found for this description.",
+            );
+            const popoverList = document.getElementById(
+              "knowledge-popover-list",
+            );
+            if (popoverList) popoverList.innerHTML = "";
+            status.textContent = "No matching articles";
+            updateInlineKnowledgeStatus(
+              "No related articles found",
+              true,
+              false,
+            );
+            updateKnowledgeSubmitCallout(0);
+            closeKnowledgePopover();
+            return;
+          }
+
+          status.textContent = `${articles.length} suggestion${articles.length === 1 ? "" : "s"}`;
+          updateInlineKnowledgeStatus(
+            `View ${articles.length} related article${articles.length === 1 ? "" : "s"} →`,
+            true,
+            true,
+          );
+          updateKnowledgeSubmitCallout(articles.length);
+          list.innerHTML = articles
+            .map((article) => {
+              const number = escapeHtml(article.number || "KB");
+              const plainTitle =
+                article.shortDescription || "Untitled article";
+              const title = highlightMatches(
+                plainTitle,
+                article.matchedTerms,
+              );
+              const excerpt = highlightMatches(
+                article.excerpt || "",
+                article.matchedTerms,
+              );
+              const metaParts = [];
+              if (article.knowledgeBase) metaParts.push(article.knowledgeBase);
+              if (article.category) metaParts.push(article.category);
+              if (article.viewCount != null)
+                metaParts.push(`${article.viewCount} views`);
+              const meta = escapeHtml(metaParts.join(" · "));
+              const url = escapeHtml(article.recordUrl || "");
+              const sysId = escapeHtml(article.sysId || "");
+              const readLabel = escapeHtml(`Read ${article.number || "article"}: ${plainTitle}`);
+              const openLabel = escapeHtml(`Open ${article.number || "article"} in ServiceNow`);
+              return `<li class="knowledge-item">
+                <button type="button" class="knowledge-card-reader" data-article-sys-id="${sysId}" aria-label="${readLabel}"></button>
+                <span class="knowledge-item-top">
+                  <span class="knowledge-number">${number}</span>
+                  <button type="button" class="knowledge-open" data-article-url="${url}" aria-label="${openLabel}" title="Open in ServiceNow">Open ↗</button>
+                </span>
+                <span class="knowledge-title">${title}</span>
+                ${excerpt ? `<span class="knowledge-excerpt">${excerpt}</span>` : ""}
+                ${meta ? `<span class="knowledge-meta">${meta}</span>` : ""}
+              </li>`;
+            })
+            .join("");
+          const popoverList = document.getElementById(
+            "knowledge-popover-list",
+          );
+          if (popoverList) popoverList.innerHTML = list.innerHTML;
+          pulseKnowledgePanel(panel);
+        } catch (error) {
+          if (seq !== knowledgeSearchSeq) return;
+          latestKnowledgeArticles = [];
+          currentKnowledgeArticleIndex = -1;
+          updateKnowledgeReaderNavigation();
+          list.innerHTML = knowledgeMessageHtml(
+            "Related knowledge is temporarily unavailable.",
+          );
+          status.textContent = "Knowledge search failed";
+          updateInlineKnowledgeStatus(
+            "Knowledge search unavailable",
+            true,
+            false,
+          );
+          updateKnowledgeSubmitCallout(0);
+          closeKnowledgePopover();
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
       }
 
       async function handleSubmit(e) {
@@ -664,8 +2434,8 @@
         contentEl.innerHTML = `
         <div class="success">
           <h3>Record created successfully</h3>
-          <p>Record ID: <strong>${data.sys_id}</strong></p>
-          ${data.number ? `<p>Number: <strong>${data.number}</strong></p>` : ""}
+          <p>Record ID: <strong>${escapeHtml(data.sys_id)}</strong></p>
+          ${data.number ? `<p>Number: <strong>${escapeHtml(data.number)}</strong></p>` : ""}
         </div>
         <div class="actions" style="border-top: none; margin-top: 16px; padding-top: 0;">
           <button type="button" class="btn btn-primary" onclick="location.reload()">Create Another</button>
@@ -698,7 +2468,15 @@
 
       window.resetForm = function () {
         const form = document.getElementById("servicenow-form");
-        if (form) form.reset();
+        if (form) {
+          form.reset();
+          form
+            .querySelectorAll("[data-reference-input]")
+            .forEach((input) =>
+              input.dispatchEvent(new Event("input", { bubbles: true })),
+            );
+          scheduleKnowledgeSearch();
+        }
       };
     </script>
   </body>

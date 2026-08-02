@@ -25,9 +25,12 @@ import {
   getActivity,
   getAttachments,
   getFormFields,
+  getKnowledgeArticle,
   getRecord,
   getRecordWithTaskFallback,
   getTicketFields,
+  searchReferenceRecords,
+  searchKnowledgeArticles,
   submitForm,
   type TicketSummary,
   uploadAttachment,
@@ -327,14 +330,62 @@ function createMcpServer(
       description: "Get the available fields for a ServiceNow table.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
+        view: z
+          .string()
+          .max(80)
+          .optional()
+          .describe("Optional ServiceNow form view name"),
       },
     },
-    async ({ table }) => {
+    async ({ table, view }) => {
       try {
-        const schema = await getFormFields(table, token, customHeaders);
+        const schema = await getFormFields(table, token, customHeaders, {
+          view,
+        });
         return {
           content: [
             { type: "text" as const, text: JSON.stringify(schema, null, 2) },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Search records for reference-field autocomplete
+  registerAppTool(
+    server,
+    "search_reference_records",
+    {
+      title: "Search Reference Records",
+      description:
+        "Search readable ServiceNow records for an interactive reference field and return their display labels and sys_ids.",
+      inputSchema: {
+        table: z.string().describe("Referenced ServiceNow table"),
+        query: z.string().min(1).max(100).describe("Typed reference search"),
+        limit: z.number().int().min(1).max(20).optional(),
+      },
+      _meta: { ui: { resourceUri: formResourceUri } },
+    },
+    async ({ table, query, limit }) => {
+      try {
+        const results = await searchReferenceRecords(
+          table,
+          query,
+          token,
+          customHeaders,
+          { limit },
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ table, query, results }, null, 2),
+            },
           ],
         };
       } catch (error) {
@@ -657,19 +708,26 @@ function createMcpServer(
     {
       title: "Render Form",
       description:
-        "Display an interactive form to create a ServiceNow record. Optionally call get_form_fields first to see available fields.",
+        "Display an interactive form to create a ServiceNow record. Optionally call get_form_fields first to see available fields. The form suggests related knowledge articles as the user types into short description / description.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         prefill: z
           .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
           .optional()
           .describe("Optional key-value pairs to pre-fill"),
+        view: z
+          .string()
+          .max(80)
+          .optional()
+          .describe("Optional ServiceNow form view name"),
       },
       _meta: { ui: { resourceUri: formResourceUri } },
     },
-    async ({ table, prefill }) => {
+    async ({ table, prefill, view }) => {
       try {
-        const schema = await getFormFields(table, token, customHeaders);
+        const schema = await getFormFields(table, token, customHeaders, {
+          view,
+        });
         const renderData = { ...schema, prefill: prefill || {} };
         let html = await getFormHtml();
         html = html.replace(
@@ -697,6 +755,114 @@ function createMcpServer(
       } catch (error) {
         return {
           content: [{ type: "text", text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Search knowledge articles (used by the form UI; also callable by the model)
+  registerAppTool(
+    server,
+    "search_knowledge",
+    {
+      title: "Search Knowledge",
+      description:
+        "Search published ServiceNow knowledge articles by keywords. The interactive creation form calls this as the user types; the model can also use it to look up related articles before or instead of opening a ticket form.",
+      inputSchema: {
+        query: z
+          .string()
+          .min(3)
+          .max(500)
+          .describe(
+            "Free-text search query, typically from short_description or description",
+          ),
+        short_description: z
+          .string()
+          .max(500)
+          .optional()
+          .describe("Primary search text from the form's short description"),
+        description: z
+          .string()
+          .max(2000)
+          .optional()
+          .describe("Long description, used as supporting search context"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe("Maximum articles to return (default 5)"),
+      },
+      _meta: { ui: { resourceUri: formResourceUri } },
+    },
+    async ({ query, short_description, description, limit }) => {
+      try {
+        const articles = await searchKnowledgeArticles(
+          query,
+          token,
+          customHeaders,
+          { limit, shortDescription: short_description, description },
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ query, articles }),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Fetch a knowledge article for the in-app reader (app-only — HTML can be large)
+  registerAppTool(
+    server,
+    "get_knowledge_article",
+    {
+      title: "Get Knowledge Article",
+      description:
+        "Fetch the readable content of a published ServiceNow knowledge article for display inside the interactive form.",
+      inputSchema: {
+        sys_id: z
+          .string()
+          .regex(/^[0-9a-f]{32}$/i)
+          .describe("Knowledge article sys_id"),
+      },
+      _meta: {
+        ui: {
+          resourceUri: formResourceUri,
+          visibility: ["app"],
+        },
+      },
+    },
+    async ({ sys_id }) => {
+      try {
+        const article = await getKnowledgeArticle(
+          sys_id,
+          token,
+          customHeaders,
+        );
+        // Omit duplicate plain-text body; the reader uses sanitized contentHtml.
+        const { content: _plain, ...articleForApp } = article;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(articleForApp),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
           isError: true,
         };
       }
@@ -1083,7 +1249,7 @@ function createMcpServer(
           content: [
             {
               type: "text",
-              text: `Opened ${record.number || record.sysId} from ${resolvedTable}.`,
+              text: JSON.stringify(renderData),
             },
             {
               type: "resource",
@@ -1094,6 +1260,7 @@ function createMcpServer(
               },
             },
           ],
+          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
         };
       } catch (error) {
         return {

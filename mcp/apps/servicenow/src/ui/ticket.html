@@ -707,11 +707,11 @@
             return `<input type="datetime-local" name="${field.name}" id="f_${field.name}" value="${safeVal}">`;
 
           case "reference": {
-            // Show the human-readable display value; store the raw sys_id so we
-            // can tell whether the user actually changed it before submitting.
-            const disp = escapeHtml(displayValue(field));
+            // Persist the sys_id. Display labels belong in the hint — putting
+            // them in value would PATCH human-readable text back to ServiceNow.
+            const sysId = escapeHtml(fieldValue(field));
             return `<input type="text" name="${field.name}" id="f_${field.name}"
-              value="${disp}" data-reference="1" placeholder="Enter sys_id">`;
+              value="${sysId}" data-reference="1" placeholder="Enter sys_id" spellcheck="false" autocomplete="off">`;
           }
 
           default:
@@ -732,8 +732,15 @@
             typeof field.referenceTable === "string"
               ? field.referenceTable
               : field.referenceTable?.name || "";
-          if (ref)
-            hint = `<div class="hint">References ${toTitleCase(ref)} — edit with a sys_id</div>`;
+          const currentLabel = displayValue(field);
+          const parts = [];
+          if (ref) parts.push(`References ${toTitleCase(ref)}`);
+          if (currentLabel && currentLabel !== fieldValue(field)) {
+            parts.push(`currently ${currentLabel}`);
+          }
+          parts.push("edit with a sys_id");
+          if (parts.length)
+            hint = `<div class="hint">${escapeHtml(parts.join(" — "))}</div>`;
         }
         return `
           <div class="form-group" data-field="${field.name}">
@@ -985,6 +992,15 @@
           if (!el) continue;
           if (field.inputType === "boolean") {
             data[name] = el.checked ? "true" : "false";
+          } else if (field.inputType === "reference") {
+            const typed = String(el.value || "").trim();
+            if (typed === "" || /^[0-9a-f]{32}$/i.test(typed)) {
+              data[name] = typed;
+            } else {
+              throw new Error(
+                `${field.label || name} must be a ServiceNow sys_id (32 hex characters).`,
+              );
+            }
           } else {
             data[name] = el.value;
           }
@@ -1011,7 +1027,13 @@
 
       async function handleSave(e) {
         e.preventDefault();
-        const data = collectChangedData();
+        let data;
+        try {
+          data = collectChangedData();
+        } catch (err) {
+          showBanner("error", err.message || "Invalid field value");
+          return;
+        }
         if (Object.keys(data).length === 0) return;
 
         const saveBtn = document.getElementById("save-btn");

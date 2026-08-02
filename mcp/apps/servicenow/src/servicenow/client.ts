@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import sanitizeHtml from "sanitize-html";
 
 import { getInstanceUrl } from "../utils/getInstanceUrl.js";
 
@@ -76,9 +77,18 @@ export interface FormField {
   hint?: string;
 }
 
+export interface FormSection {
+  id: string;
+  title: string;
+  fields: string[];
+}
+
 export interface FormSchema {
   table: string;
   fields: FormField[];
+  /** Sections from the configured ServiceNow form view, when readable. */
+  sections?: FormSection[];
+  view?: string;
   /** Full table hierarchy (table + parent tables), child first. */
   hierarchy?: string[];
   /** True when the table extends `task` — enables ticket-aware UI. */
@@ -182,23 +192,30 @@ export interface TicketAttachment {
   createdBy: string;
 }
 
+export interface ReferenceSearchResult {
+  sysId: string;
+  displayValue: string;
+}
+
 const FORM_SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000;
 const formSchemaCache = new Map<
   string,
   { expiresAt: number; schema: FormSchema }
 >();
+const referenceDisplayFieldCache = new Map<string, string>();
 
 function formSchemaCacheKey(
   instanceUrl: string,
   table: string,
   accessToken: string,
   extraHeaders: Record<string, string>,
+  view: string,
 ): string {
   const identity = createHash("sha256")
     .update(accessToken)
     .update(JSON.stringify(Object.entries(extraHeaders).sort()))
     .digest("hex");
-  return `${instanceUrl}|${table}|${identity}`;
+  return `${instanceUrl}|${table}|${view}|${identity}`;
 }
 
 function classifyInputType(internalType: string): FormField["inputType"] {
@@ -278,18 +295,212 @@ async function getTableHierarchy(
   return tables;
 }
 
+async function getFormSections(
+  table: string,
+  view: string,
+  headers: Record<string, string>,
+  instanceUrl: string,
+): Promise<FormSection[]> {
+  try {
+    const sectionQuery = view
+      ? `name=${table}^view.name=${escapeQueryValue(view)}`
+      : `name=${table}^viewISEMPTY`;
+    const sectionParams = new URLSearchParams({
+      sysparm_query: sectionQuery,
+      sysparm_fields: "sys_id,caption",
+      sysparm_display_value: "all",
+      sysparm_limit: "100",
+    });
+    const sectionResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_ui_section?${sectionParams}`,
+      { headers },
+    );
+    if (!sectionResponse.ok) return [];
+    const sectionData = await sectionResponse.json();
+    const sectionRows: Record<string, unknown>[] = Array.isArray(
+      sectionData.result,
+    )
+      ? sectionData.result
+      : [];
+    if (sectionRows.length === 0) return [];
+
+    const sectionIds = sectionRows
+      .map((row) => normalizeValue(row.sys_id).value)
+      .filter((id) => SYS_ID_PATTERN.test(id));
+    if (sectionIds.length === 0) return [];
+    const formParams = new URLSearchParams({
+      sysparm_query: sectionQuery,
+      sysparm_fields: "sys_id",
+      sysparm_limit: "1",
+    });
+    const formResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_ui_form?${formParams}`,
+      { headers },
+    );
+    const sectionOrder = new Map<string, number>();
+    if (formResponse.ok) {
+      const formData = await formResponse.json();
+      const formId = normalizeValue(formData.result?.[0]?.sys_id).value;
+      if (SYS_ID_PATTERN.test(formId)) {
+        const formSectionParams = new URLSearchParams({
+          sysparm_query: `sys_ui_form=${formId}^sys_ui_sectionIN${sectionIds.join(",")}^ORDERBYposition`,
+          sysparm_fields: "sys_ui_section,position",
+          sysparm_limit: "100",
+        });
+        const formSectionResponse = await fetch(
+          `${instanceUrl}/api/now/table/sys_ui_form_section?${formSectionParams}`,
+          { headers },
+        );
+        if (formSectionResponse.ok) {
+          const formSectionData = await formSectionResponse.json();
+          for (const row of formSectionData.result || []) {
+            sectionOrder.set(
+              normalizeValue(row.sys_ui_section).value,
+              Number(normalizeValue(row.position).value) || 0,
+            );
+          }
+        }
+      }
+    }
+    const elementParams = new URLSearchParams({
+      sysparm_query: `sys_ui_sectionIN${sectionIds.join(",")}^elementISNOTEMPTY^ORDERBYposition`,
+      sysparm_fields: "sys_ui_section,element,position",
+      sysparm_display_value: "all",
+      sysparm_limit: "1000",
+    });
+    const elementResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_ui_element?${elementParams}`,
+      { headers },
+    );
+    if (!elementResponse.ok) return [];
+    const elementData = await elementResponse.json();
+    const elementRows: Record<string, unknown>[] = Array.isArray(
+      elementData.result,
+    )
+      ? elementData.result
+      : [];
+    const fieldsBySection = new Map<string, string[]>();
+    for (const row of elementRows) {
+      const sectionId = normalizeValue(row.sys_ui_section).value;
+      const element = normalizeValue(row.element).value;
+      if (!sectionId || !element || element.startsWith(".")) continue;
+      const fields = fieldsBySection.get(sectionId) || [];
+      fields.push(element);
+      fieldsBySection.set(sectionId, fields);
+    }
+
+    const orderedSectionRows = [...sectionRows].sort(
+      (left, right) =>
+        (sectionOrder.get(normalizeValue(left.sys_id).value) ??
+          Number.MAX_SAFE_INTEGER) -
+        (sectionOrder.get(normalizeValue(right.sys_id).value) ??
+          Number.MAX_SAFE_INTEGER),
+    );
+    return orderedSectionRows
+      .map((row, index) => {
+        const id = normalizeValue(row.sys_id).value;
+        const caption = normalizeValue(row.caption).display.trim();
+        return {
+          id,
+          title: caption || (index === 0 ? "Details" : `Section ${index + 1}`),
+          fields: fieldsBySection.get(id) || [],
+        };
+      })
+      .filter((section) => section.fields.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function getReferenceDisplayField(
+  table: string,
+  accessToken: string,
+  extraHeaders: Record<string, string>,
+): Promise<string> {
+  const instanceUrl = getInstanceUrl();
+  const validatedTable = validateTableName(table);
+  const cacheKey = `${instanceUrl}|${validatedTable}`;
+  const cached = referenceDisplayFieldCache.get(cacheKey);
+  if (cached) return cached;
+  const headers = {
+    ...extraHeaders,
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+  };
+  const hierarchy = await getTableHierarchy(
+    validatedTable,
+    headers,
+    instanceUrl,
+  );
+  for (const hierarchyTable of hierarchy) {
+    const params = new URLSearchParams({
+      sysparm_query: `name=${hierarchyTable}^display=true^elementISNOTEMPTY`,
+      sysparm_fields: "element",
+      sysparm_limit: "1",
+    });
+    const response = await fetch(
+      `${instanceUrl}/api/now/table/sys_dictionary?${params}`,
+      { headers },
+    );
+    if (!response.ok) continue;
+    const data = await response.json();
+    const field = normalizeValue(data.result?.[0]?.element).value;
+    if (/^[A-Za-z][A-Za-z0-9_]*$/.test(field)) {
+      referenceDisplayFieldCache.set(cacheKey, field);
+      return field;
+    }
+  }
+
+  const fallbackPriority = [
+    "name",
+    "u_name",
+    "number",
+    "u_number",
+    "sys_created_on",
+  ];
+  for (const hierarchyTable of hierarchy) {
+    const params = new URLSearchParams({
+      sysparm_query: `name=${hierarchyTable}^elementIN${fallbackPriority.join(",")}`,
+      sysparm_fields: "element",
+      sysparm_limit: String(fallbackPriority.length),
+    });
+    const response = await fetch(
+      `${instanceUrl}/api/now/table/sys_dictionary?${params}`,
+      { headers },
+    );
+    if (!response.ok) continue;
+    const data = await response.json();
+    const available = new Set(
+      (data.result || []).map(
+        (row: Record<string, unknown>) => normalizeValue(row.element).value,
+      ),
+    );
+    const field = fallbackPriority.find((candidate) =>
+      available.has(candidate),
+    );
+    if (field) {
+      referenceDisplayFieldCache.set(cacheKey, field);
+      return field;
+    }
+  }
+  return "sys_created_on";
+}
+
 export async function getFormFields(
   table: string,
   accessToken: string,
   extraHeaders: Record<string, string> = {},
+  options: { view?: string } = {},
 ): Promise<FormSchema> {
   const instanceUrl = getInstanceUrl();
   const validatedTable = validateTableName(table);
+  const view = options.view?.trim() || "";
   const cacheKey = formSchemaCacheKey(
     instanceUrl,
     validatedTable,
     accessToken,
     extraHeaders,
+    view,
   );
   const cached = formSchemaCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.schema;
@@ -333,6 +544,37 @@ export async function getFormFields(
   const dictRows = (dictData.result || []).filter(
     (r: Record<string, unknown>) => !String(r.element || "").startsWith("sys_"),
   );
+  const referenceTableIds = [
+    ...new Set(
+      dictRows
+        .map((row: Record<string, unknown>) =>
+          normalizeValue(row.reference).value,
+        )
+        .filter((value: string) => SYS_ID_PATTERN.test(value)),
+    ),
+  ];
+  const referenceTablesById = new Map<string, string>();
+  if (referenceTableIds.length > 0) {
+    const referenceParams = new URLSearchParams({
+      sysparm_query: `sys_idIN${referenceTableIds.join(",")}`,
+      sysparm_fields: "sys_id,name",
+      sysparm_limit: String(referenceTableIds.length),
+    });
+    const referenceResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_db_object?${referenceParams}`,
+      { headers },
+    );
+    if (referenceResponse.ok) {
+      const referenceData = await referenceResponse.json();
+      for (const row of referenceData.result || []) {
+        const id = normalizeValue(row.sys_id).value;
+        const name = normalizeValue(row.name).value;
+        if (SYS_ID_PATTERN.test(id) && TABLE_NAME_PATTERN.test(name)) {
+          referenceTablesById.set(id, name);
+        }
+      }
+    }
+  }
 
   // Helper to get internal_type value (can be string or object with value property)
   const getInternalType = (val: unknown): string => {
@@ -341,6 +583,18 @@ export async function getFormFields(
       return String((val as { value: unknown }).value || "");
     }
     return String(val);
+  };
+  const getReferenceTable = (val: unknown): string | undefined => {
+    const normalized = normalizeValue(val);
+    for (const candidate of [normalized.value, normalized.display]) {
+      const trimmed = candidate.trim();
+      const resolved = referenceTablesById.get(trimmed);
+      if (resolved) return resolved;
+      if (TABLE_NAME_PATTERN.test(trimmed)) return trimmed;
+      const bracketed = trimmed.match(/\[([A-Za-z][A-Za-z0-9_]*)\]/);
+      if (bracketed) return bracketed[1];
+    }
+    return undefined;
   };
 
   // Collect choice fields
@@ -445,7 +699,7 @@ export async function getFormFields(
       readOnly: r.read_only === "true" || r.read_only === true,
       maxLength: r.max_length ? Number(r.max_length) : undefined,
       defaultValue,
-      referenceTable: r.reference ? String(r.reference) : undefined,
+      referenceTable: getReferenceTable(r.reference),
     };
 
     if (choicesByField[field.name]) {
@@ -458,9 +712,21 @@ export async function getFormFields(
   // Sort alphabetically by label
   fields.sort((a, b) => a.label.localeCompare(b.label));
 
+  let sections: FormSection[] = [];
+  for (const hierarchyTable of tableHierarchy) {
+    sections = await getFormSections(
+      hierarchyTable,
+      view,
+      headers,
+      instanceUrl,
+    );
+    if (sections.length > 0) break;
+  }
   const schema = {
     table: validatedTable,
     fields,
+    sections: sections.length > 0 ? sections : undefined,
+    view: view || undefined,
     hierarchy: tableHierarchy,
     isTaskTable: tableHierarchy.includes("task"),
   };
@@ -473,6 +739,63 @@ export async function getFormFields(
     schema,
   });
   return schema;
+}
+
+/** Search records for a reference-field autocomplete. */
+export async function searchReferenceRecords(
+  table: string,
+  query: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+  options: { limit?: number } = {},
+): Promise<ReferenceSearchResult[]> {
+  const instanceUrl = getInstanceUrl();
+  const validatedTable = validateTableName(table);
+  const searchText = query.trim();
+  if (searchText.length < 1 || searchText.length > 100) return [];
+  const displayField = await getReferenceDisplayField(
+    validatedTable,
+    accessToken,
+    extraHeaders,
+  );
+  const limit = Math.min(Math.max(options.limit ?? 8, 1), 20);
+  const encodedQuery = SYS_ID_PATTERN.test(searchText)
+    ? `sys_id=${searchText}`
+    : `${displayField}LIKE${escapeQueryValue(searchText)}^ORDERBY${displayField}`;
+  const params = new URLSearchParams({
+    sysparm_query: encodedQuery,
+    sysparm_fields: `sys_id,${displayField}`,
+    sysparm_display_value: "all",
+    sysparm_limit: String(limit),
+  });
+  const response = await fetch(
+    `${instanceUrl}/api/now/table/${tablePath(validatedTable)}?${params}`,
+    {
+      headers: {
+        ...extraHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Reference search failed (${response.status}): ${errorText}`,
+    );
+  }
+  const data = await response.json();
+  const rows: Record<string, unknown>[] = Array.isArray(data.result)
+    ? data.result
+    : [];
+  return rows
+    .map((row) => ({
+      sysId: normalizeValue(row.sys_id).value,
+      displayValue:
+        normalizeValue(row[displayField]).display ||
+        normalizeValue(row[displayField]).value,
+    }))
+    .filter((result) => result.sysId && result.displayValue);
 }
 
 const TICKET_PANEL_FIELDS = new Set([
@@ -521,6 +844,7 @@ export async function getTicketFields(
     table,
     accessToken,
     extraHeaders,
+    "",
   );
   const inFlight = ticketSchemaInFlight.get(key);
   if (inFlight) return inFlight;
@@ -628,6 +952,15 @@ function escapeQueryValue(value: string): string {
     throw new Error("Filter values cannot contain ServiceNow JavaScript expressions");
   }
   return normalized;
+}
+
+/** Normalize free-text knowledge search input for Zing (never throw on user prose). */
+function sanitizeKnowledgeSearchText(value: string): string {
+  return value
+    .replace(/javascript\s*:/gi, " ")
+    .replace(/[\^\r\n\u0000]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function validateFilterField(field: string): string {
@@ -1206,6 +1539,445 @@ export async function uploadAttachment(
     sizeBytes: Number(row.size_bytes) || fileData.length,
     createdOn: String(row.sys_created_on ?? ""),
     createdBy: String(row.sys_created_by ?? ""),
+  };
+}
+
+/** A published knowledge article returned by contextual form search. */
+export interface KnowledgeArticle {
+  sysId: string;
+  number: string;
+  shortDescription: string;
+  excerpt: string;
+  knowledgeBase: string;
+  category: string;
+  viewCount: number | null;
+  published: string;
+  updated: string;
+  matchedTerms: string[];
+  recordUrl: string;
+}
+
+export interface KnowledgeArticleDetail {
+  sysId: string;
+  number: string;
+  shortDescription: string;
+  content: string;
+  contentHtml: string;
+  knowledgeBase: string;
+  category: string;
+  published: string;
+  updated: string;
+  recordUrl: string;
+}
+
+function knowledgeTerms(value: string): string[] {
+  const words =
+    value
+      .toLocaleLowerCase()
+      .match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) || [];
+  return [...new Set(words.filter((word) => word.length >= 2))].sort(
+    (left, right) => right.length - left.length,
+  );
+}
+
+function plainText(value: string): string {
+  return value
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function knowledgeContentText(value: string): string {
+  return value
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function absoluteKnowledgeUrl(
+  value: string,
+  instanceUrl: string,
+  allowData = false,
+): string {
+  try {
+    const url = new URL(value.replace(/&amp;/g, "&"), `${instanceUrl}/`);
+    const protocols = ["http:", "https:", "mailto:"];
+    if (allowData) protocols.push("data:");
+    return protocols.includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function absoluteKnowledgeImageUrl(
+  value: string,
+  instanceUrl: string,
+): string {
+  const absolute = absoluteKnowledgeUrl(value, instanceUrl, true);
+  if (absolute.startsWith("data:")) return absolute;
+  try {
+    return new URL(absolute).origin === new URL(instanceUrl).origin
+      ? absolute
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function sanitizeKnowledgeContent(value: string, instanceUrl: string): string {
+  return sanitizeHtml(value, {
+    allowedTags: [
+      "a",
+      "blockquote",
+      "br",
+      "code",
+      "del",
+      "details",
+      "div",
+      "em",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "hr",
+      "img",
+      "li",
+      "ol",
+      "p",
+      "pre",
+      "s",
+      "span",
+      "strong",
+      "sub",
+      "summary",
+      "sup",
+      "table",
+      "tbody",
+      "td",
+      "th",
+      "thead",
+      "tr",
+      "u",
+      "ul",
+    ],
+    allowedAttributes: {
+      a: ["href", "title"],
+      img: ["src", "alt", "title", "width", "height"],
+      td: ["colspan", "rowspan"],
+      th: ["colspan", "rowspan", "scope"],
+    },
+    allowedSchemes: ["http", "https", "data", "mailto"],
+    allowProtocolRelative: false,
+    transformTags: {
+      a: (_tagName, attributes) => ({
+        tagName: "a",
+        attribs: {
+          ...attributes,
+          href: absoluteKnowledgeUrl(attributes.href || "", instanceUrl),
+        },
+      }),
+      img: (_tagName, attributes) => ({
+        tagName: "img",
+        attribs: {
+          ...attributes,
+          src: absoluteKnowledgeImageUrl(
+            attributes.src || "",
+            instanceUrl,
+          ),
+        },
+      }),
+    },
+  });
+}
+
+async function embedKnowledgeImages(
+  html: string,
+  instanceUrl: string,
+  accessToken: string,
+  extraHeaders: Record<string, string>,
+): Promise<string> {
+  const sources = [
+    ...new Set(
+      [...html.matchAll(/\bsrc="([^"]+)"/gi)].map((match) => match[1]),
+    ),
+  ].slice(0, 4);
+  let totalBytes = 0;
+  let result = html;
+
+  for (const escapedSource of sources) {
+    const source = escapedSource.replace(/&amp;/g, "&");
+    if (source.startsWith("data:")) continue;
+    try {
+      const imageUrl = new URL(source);
+      if (imageUrl.origin !== new URL(instanceUrl).origin) continue;
+      const response = await fetch(imageUrl, {
+        headers: {
+          ...extraHeaders,
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "image/*",
+        },
+      });
+      const contentType = response.headers.get("content-type") || "";
+      if (!response.ok || !contentType.startsWith("image/")) continue;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > 1_500_000 || totalBytes + bytes.length > 4_000_000) {
+        continue;
+      }
+      totalBytes += bytes.length;
+      const dataUrl = `data:${contentType};base64,${bytes.toString("base64")}`;
+      result = result.replaceAll(`src="${escapedSource}"`, `src="${dataUrl}"`);
+    } catch {
+      // Keep the absolute URL when an image cannot be embedded.
+    }
+  }
+  return result;
+}
+
+function matchingExcerpt(text: string, terms: string[], maxLength = 240): string {
+  if (!text) return "";
+  const lower = text.toLocaleLowerCase();
+  const positions = terms
+    .map((term) => lower.indexOf(term))
+    .filter((position) => position >= 0);
+  const firstMatch = positions.length > 0 ? Math.min(...positions) : 0;
+  const start = Math.max(0, firstMatch - 70);
+  const end = Math.min(text.length, start + maxLength);
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < text.length ? "…" : "";
+  return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+}
+
+/**
+ * Search published knowledge articles by free-text keywords.
+ *
+ * Queries the native ServiceNow Zing text index through `IR_AND_OR_QUERY` and
+ * preserves its relevance order. Zing owns stop-word removal, stemming,
+ * synonym expansion, field weights, and document scoring.
+ */
+export async function searchKnowledgeArticles(
+  query: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+  options: {
+    limit?: number;
+    shortDescription?: string;
+    description?: string;
+  } = {},
+): Promise<KnowledgeArticle[]> {
+  const instanceUrl = getInstanceUrl();
+  const shortDescription = sanitizeKnowledgeSearchText(
+    options.shortDescription || "",
+  );
+  const description = sanitizeKnowledgeSearchText(options.description || "");
+  const combinedQuery = sanitizeKnowledgeSearchText(
+    query || `${shortDescription} ${description}`,
+  ).slice(0, 500);
+  // Prefer short description when specific enough; otherwise use the combined
+  // query so a short subject + long body still searches (matches the form UI).
+  const primaryQuery =
+    shortDescription.length >= 3
+      ? shortDescription.slice(0, 500)
+      : combinedQuery;
+  if (primaryQuery.length < 3) {
+    return [];
+  }
+
+  const limit = Math.min(Math.max(options.limit ?? 5, 1), 10);
+  const fetchZingResults = async (
+    searchQuery: string,
+  ): Promise<Record<string, unknown>[]> => {
+    const searchText = sanitizeKnowledgeSearchText(searchQuery);
+    if (searchText.length < 3) return [];
+    const sysparmQuery = [
+      "workflow_state=published",
+      "active=true",
+      `IR_AND_OR_QUERY=${searchText}`,
+      "ORDERBYDESCir_query_score",
+    ].join("^");
+    const params = new URLSearchParams({
+      sysparm_query: sysparmQuery,
+      sysparm_limit: String(limit),
+      sysparm_display_value: "all",
+      sysparm_fields:
+        "sys_id,number,short_description,text,kb_knowledge_base,kb_category,sys_view_count,published,sys_updated_on",
+    });
+    const response = await fetch(
+      `${instanceUrl}/api/now/table/kb_knowledge?${params}`,
+      {
+        method: "GET",
+        headers: {
+          ...extraHeaders,
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.result) ? data.result : [];
+  };
+
+  const rows = await fetchZingResults(primaryQuery);
+  const fallbackQuery =
+    combinedQuery !== primaryQuery && combinedQuery.length >= 3
+      ? combinedQuery
+      : description &&
+          description !== primaryQuery &&
+          `${primaryQuery} ${description}`.trim().length >= 3
+        ? sanitizeKnowledgeSearchText(
+            `${primaryQuery} ${description}`,
+          ).slice(0, 500)
+        : "";
+  if (rows.length < limit && fallbackQuery && fallbackQuery !== primaryQuery) {
+    const seen = new Set(rows.map((row) => normalizeValue(row.sys_id).value));
+    try {
+      const fallbackRows = await fetchZingResults(fallbackQuery);
+      for (const row of fallbackRows) {
+        const sysId = normalizeValue(row.sys_id).value;
+        if (!seen.has(sysId)) {
+          seen.add(sysId);
+          rows.push(row);
+        }
+        if (rows.length === limit) break;
+      }
+    } catch {
+      // Keep successful primary results if the fallback query fails.
+    }
+  }
+
+  const displayTerms = knowledgeTerms(combinedQuery || primaryQuery);
+  return rows.slice(0, limit).map((raw) => {
+    const values: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      values[key] = normalizeValue(value).display;
+    }
+    const sysId = normalizeValue(raw.sys_id).value;
+    const viewRaw = normalizeValue(raw.sys_view_count).value;
+    const viewCount = viewRaw === "" ? null : Number(viewRaw);
+    const title = values.short_description || "";
+    const body = plainText(normalizeValue(raw.text).value);
+    const searchableText = `${title} ${body}`.toLocaleLowerCase();
+    const matchedTerms = displayTerms.filter((term) =>
+      searchableText.includes(term),
+    );
+    return {
+      sysId,
+      number: values.number || "",
+      shortDescription: title,
+      excerpt: matchingExcerpt(body, matchedTerms),
+      knowledgeBase: values.kb_knowledge_base || "",
+      category: values.kb_category || "",
+      viewCount: Number.isFinite(viewCount) ? viewCount : null,
+      published: values.published || "",
+      updated: values.sys_updated_on || "",
+      matchedTerms,
+      recordUrl: `${instanceUrl}/nav_to.do?uri=${encodeURIComponent(
+        `kb_knowledge.do?sys_id=${sysId}`,
+      )}`,
+    };
+  });
+}
+
+/** Fetch a published knowledge article for the in-app reader. */
+export async function getKnowledgeArticle(
+  sysId: string,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<KnowledgeArticleDetail> {
+  const instanceUrl = getInstanceUrl();
+  const validatedSysId = validateSysId(sysId, "knowledge article sys_id");
+  const params = new URLSearchParams({
+    sysparm_display_value: "all",
+    sysparm_fields:
+      "sys_id,number,short_description,text,kb_knowledge_base,kb_category,published,sys_updated_on,active,workflow_state",
+  });
+  const response = await fetch(
+    `${instanceUrl}/api/now/table/kb_knowledge/${validatedSysId}?${params}`,
+    {
+      method: "GET",
+      headers: {
+        ...extraHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error(
+        "You do not have permission to read this knowledge article.",
+      );
+    }
+    if (response.status === 404) {
+      throw new Error("This knowledge article was not found.");
+    }
+    await response.text().catch(() => "");
+    throw new Error(
+      `Could not load knowledge article (ServiceNow returned ${response.status}).`,
+    );
+  }
+
+  const data = await response.json();
+  const raw: Record<string, unknown> = data.result || {};
+  const active = normalizeValue(raw.active).value;
+  const workflowState = normalizeValue(raw.workflow_state).value;
+  if (!["true", "1"].includes(active) || workflowState !== "published") {
+    throw new Error(
+      "This knowledge article is not available (inactive or unpublished).",
+    );
+  }
+
+  const values: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    values[key] = normalizeValue(value).display;
+  }
+  const rawContent = normalizeValue(raw.text).value;
+  const contentHtml = await embedKnowledgeImages(
+    sanitizeKnowledgeContent(rawContent, instanceUrl),
+    instanceUrl,
+    accessToken,
+    extraHeaders,
+  );
+  return {
+    sysId: validatedSysId,
+    number: values.number || "",
+    shortDescription: values.short_description || "",
+    content: knowledgeContentText(rawContent),
+    contentHtml,
+    knowledgeBase: values.kb_knowledge_base || "",
+    category: values.kb_category || "",
+    published: values.published || "",
+    updated: values.sys_updated_on || "",
+    recordUrl: `${instanceUrl}/nav_to.do?uri=${encodeURIComponent(
+      `kb_knowledge.do?sys_id=${validatedSysId}`,
+    )}`,
   };
 }
 

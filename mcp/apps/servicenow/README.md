@@ -4,7 +4,7 @@ An MCP (Model Context Protocol) server for **ServiceNow** with interactive, in-c
 
 It can:
 
-- Inspect a ServiceNow table's fields and render an editable **creation form** right inside the client (optionally pre-filled from the conversation), then submit it as a new record.
+- Inspect a ServiceNow table's fields and render an editable **creation form** right inside the client (optionally pre-filled from the conversation), then submit it as a new record. As the user types into short description / description, the form **suggests related knowledge articles** (an approximation of ServiceNow Contextual Search) so they can open a fix before filing a ticket.
 - **Discover tickets** across task-derived records using user-facing filters such as state, severity, impact, assignment, and date ranges — without asking the user to identify a ServiceNow table — then open any result in the interactive ticket panel.
 - **Open an existing record** (e.g. an incident) as an interactive **ticket panel** inside the client, where users can edit fields, change state, upload/download/delete attachments, and add comments or work notes — each change saved straight back to ServiceNow without leaving the chat.
 
@@ -120,13 +120,21 @@ The server starts on port `3000` and exposes the MCP endpoint at `/mcp`.
 
 Get the available fields for a ServiceNow table.
 
-**Parameters:** `table` (required) — the table name, e.g. `incident`.
+**Parameters:** `table` (required) — the table name, e.g. `incident`; `view` (optional) — a ServiceNow form view name.
 
 ### `render_form`
 
 Display an interactive form to create a ServiceNow record. Fetches the table's fields and renders them as an editable form; the LLM can pre-fill values it extracted from the conversation.
 
-**Parameters:** `table` (required), `prefill` (optional) — key-value pairs (string/number/boolean) used to pre-populate fields.
+When the form includes `short_description` or `description`, it debounces those fields and calls `search_knowledge` so related published articles appear while the user types. It searches the short description first and adds the description as fallback context when needed. Results appear in a sticky panel on wider screens; selecting the inline result indicator opens the same suggestions in a compact popover. Selecting an article card opens an in-app reader, while its arrow opens the original record in ServiceNow.
+
+The reader preserves sanitized article structure such as headings, lists, links, tables, code blocks, and images. Same-instance images are fetched with the user's ServiceNow token and embedded when they are within conservative size limits. Users can move between suggestions without losing their form state.
+
+When the OAuth user can read ServiceNow UI metadata, the form follows the configured section names and field order for the requested view. Otherwise, commonly used ticket fields and all required fields appear first, with remaining optional fields under **More fields**.
+
+Reference fields provide autocomplete against their configured reference tables and submit the selected record's `sys_id`. Complex scripted reference qualifiers are not reproduced; when reference metadata is unavailable, the form falls back to direct `sys_id` input. Submit and Reset remain sticky on long forms.
+
+**Parameters:** `table` (required), `prefill` (optional) — key-value pairs (string/number/boolean) used to pre-populate fields; `view` (optional) — a ServiceNow form view name.
 
 ```json
 {
@@ -137,6 +145,47 @@ Display an interactive form to create a ServiceNow record. Fetches the table's f
   }
 }
 ```
+
+### `search_reference_records`
+
+Search records by their configured ServiceNow display field for reference-field autocomplete.
+
+**Parameters:** `table` (required), `query` (required, 1–100 chars), `limit` (optional, 1–20, default 8).
+
+### `search_knowledge`
+
+Search published knowledge articles (`kb_knowledge`) by free-text keywords. Used by the creation form for live suggestions; the model can also call it directly to look up articles before opening a form.
+
+#### How this recipe searches today
+
+The default implementation queries `kb_knowledge` through the Table API with `IR_AND_OR_QUERY`, which hits the instance's **Zing** text index for published, active articles. The app sends natural search text (after light sanitization) and preserves Zing's relevance order. Zing applies the instance's configured stop words, stemming, synonyms, field weights, and document scoring; the app only adds excerpts and highlighting for presentation.
+
+This works out of the box on a typical Personal Developer Instance and needs no custom ServiceNow code. Tradeoffs to be aware of:
+
+- Results depend on the Zing index being present and maintained for `kb_knowledge`. If the index is missing or AI Search has replaced Zing for knowledge, you can get empty results that look identical to “no matching articles.”
+- Table API ACLs may not match portal / Contextual Search user criteria exactly — restricted knowledge bases can over- or under-appear compared with the ServiceNow UI.
+- There is no language or `valid_to` filtering unless you add it.
+
+#### Adapting search for an enterprise instance
+
+The default is a useful starting point, not a universal production search strategy. Many organizations want suggestions to match whatever the portal already uses (Contextual Search, AI Search, knowledge-base filters, language, and user criteria).
+
+Those native ranking APIs are server-side rather than a documented publicly callable REST surface, so the right approach is instance-specific — for example an instance-side Scripted REST wrapper, tuned Zing configuration, or a different search endpoint. Discuss options with your ServiceNow administrators and point `search_knowledge` at whatever you standardize on.
+
+**Parameters:** `query` (required, min 3 chars), `short_description` (optional primary search text), `description` (optional fallback context), `limit` (optional, 1–10, default 5).
+
+```json
+{
+  "query": "VPN disconnects on sleep",
+  "limit": 5
+}
+```
+
+### `get_knowledge_article`
+
+Fetch an active, published knowledge article by `sys_id` for the creation form's in-app reader. Marked app-only so hosts do not expose the (potentially large) HTML body to the model.
+
+**Parameters:** `sys_id` (required) — the 32-character `kb_knowledge` record ID.
 
 ### `submit_form`
 
@@ -257,10 +306,10 @@ The interactive ticket-discovery result list rendered by `discover_tickets`.
 }
 ```
 
-For a deployed server, replace the URL with your public endpoint, e.g. `https://your-app.up.railway.app/mcp`.
+For a deployed server, replace the URL with your public HTTPS endpoint, e.g. `https://mcp.example.com/mcp`.
 
 ## Deployment
 
-Deploy the built `dist/` to any HTTPS host (Railway, Fly, Render, etc.) and set `BASE_URL` to the server's public URL so OAuth callbacks resolve. The `/authorize` route is handled directly (before `mcpAuthRouter`) to bypass the SDK's `redirect_uri` validation, which would otherwise require persistent client storage.
+Deploy the built `dist/` to any HTTPS host and set `BASE_URL` to the server's public URL so OAuth callbacks resolve. The `/authorize` route is handled directly (before `mcpAuthRouter`) to bypass the SDK's `redirect_uri` validation, which would otherwise require persistent client storage.
 
 > **Note:** OAuth client and session state is held in memory. For production, back it with a persistent store (e.g. Redis or PostgreSQL) so registrations and in-flight authorizations survive restarts.
