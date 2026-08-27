@@ -1,0 +1,32 @@
+mcp/apps-ui/automation-hub/src/automationhub/draftSync.ts
+  s_cbd8458e64838c::t_2b01980198f004 395-402
+  s_cbd8458e64838c::t_409f96a3e19f70 316-328
+  s_cbd8458e64838c::t_9ce38c7eb3fe5d 241
+  s_cbd8458e64838c::t_d480c4dab4aa22 652
+  s_cbd8458e64838c::t_421ed66fc25e82 513
+mcp/apps-ui/automation-hub/src/scripts/smoke-draft-sync.ts
+  s_cbd8458e64838c::t_00bcfa9494aeb0 115
+  s_cbd8458e64838c::t_badf8e937a30c3 53
+  s_cbd8458e64838c::t_8ec6a2625036ac 116-127
+  s_cbd8458e64838c::t_84ca713b9fd20a 32-52
+  s_cbd8458e64838c::t_6c5a09586fa929 128-129
+mcp/apps-ui/automation-hub/src/scripts/test-schema.ts
+  s_cbd8458e64838c::t_6bcf8d16f364d8 13
+  s_cbd8458e64838c::t_f14d3639d1eea9 272-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "43a60689cf333ea33ca503ec93df1ff8d937c398",
+  "prompts": {},
+  "sessions": {
+    "s_cbd8458e64838c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f2673ca9-30b7-4366-a09e-159d630eed03",
+        "model": "grok-4.6"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
