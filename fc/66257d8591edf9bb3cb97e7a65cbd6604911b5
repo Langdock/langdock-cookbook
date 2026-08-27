@@ -1,0 +1,20 @@
+mcp/apps-ui/automation-hub/src/ui/form.html
+  s_cbd8458e64838c::t_c111483519cfa3 1320-1321
+  s_cbd8458e64838c::t_be74b18fb2cac2 946-948
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "fc66257d8591edf9bb3cb97e7a65cbd6604911b5",
+  "prompts": {},
+  "sessions": {
+    "s_cbd8458e64838c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f2673ca9-30b7-4366-a09e-159d630eed03",
+        "model": "grok-4.6"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
