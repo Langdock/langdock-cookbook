@@ -1,0 +1,67 @@
+mcp/apps-ui/automation-hub/README.md
+  s_2967c1d1a20f77::t_9be20f545f7bc2 117
+  s_2967c1d1a20f77::t_a70235101d173c 119-120,124-126
+  s_2967c1d1a20f77::t_06d0deb69a6fe2 29,31-32,34-38,40-42,108,111,113,116,118,123
+mcp/apps-ui/automation-hub/SCHEMA_INVENTORY.md
+  s_2967c1d1a20f77::t_85bfcd418bede7 34,68,78,80,85
+  s_2967c1d1a20f77::t_a247f3663d5ba1 67
+  s_2967c1d1a20f77::t_9716c7e3468794 79
+  s_2967c1d1a20f77::t_b0e77f80dac964 81-82,86-87
+mcp/apps-ui/automation-hub/src/automationhub/branchSchema.ts
+  s_2967c1d1a20f77::t_938aa711239a3b 1-225
+mcp/apps-ui/automation-hub/src/automationhub/draftSync.ts
+  s_2967c1d1a20f77::t_53a17e98d410d0 91-104
+mcp/apps-ui/automation-hub/src/scripts/test-schema.ts
+  s_2967c1d1a20f77::t_fe23a38dc8ffbc 22-27,289-382
+  s_2967c1d1a20f77::t_9b1d2663e01a9b 383
+mcp/apps-ui/automation-hub/src/automationhub/schemaCache.ts
+  s_2967c1d1a20f77::t_acfcc2ca49d035 1-3,5-12,14,16-18,20-21,24-25,27-37,40-52
+mcp/apps-ui/automation-hub/src/automationhub/formApi.ts
+  s_2967c1d1a20f77::t_aae46f9fc1f6e5 4,6,8-10,29-31,48,51,53,58,60,65-70,99-103,108,110-112,114-116
+SCHEMA_CACHE_TEST_MATRIX.md
+  s_2967c1d1a20f77::t_ef9689e1afe8dc 1-17,25-26,30-35,37-64,69-87,90,99-110
+  s_2967c1d1a20f77::t_59d8d50e8835bf 28-29,88-89,91-98
+  s_2967c1d1a20f77::t_7b95f64948a374 18-21,27,36
+  s_2967c1d1a20f77::t_3df0a9fea59dc6 22-24,65-68
+mcp/apps-ui/automation-hub/src/index.ts
+  s_2967c1d1a20f77::t_78923d340a30e9 476-477,529
+  s_2967c1d1a20f77::t_f60da92a704003 444-448,457,461-467,470-471
+  s_2967c1d1a20f77::t_0105be5b377ca6 27,88-91
+  s_2967c1d1a20f77::t_2106974659b5e5 12-14,44-47,309-396
+  s_2967c1d1a20f77::t_fcd27c61fff279 611,668
+  s_2967c1d1a20f77::t_c1de2d46a46a43 397-398
+mcp/apps-ui/automation-hub/src/scripts/schema-sync.ts
+  s_2967c1d1a20f77::t_56416a5c4293c7 1-19,23-42,44-52,55,57-61,63-72,78-96,99-106,108-126,128-129,131-142,145-149,153-154,156-160,163-170,173-216,218-259,269-331,334-335
+  s_2967c1d1a20f77::t_9943e7f4529bc7 150-151,260-263,268
+  s_2967c1d1a20f77::t_3265a23af3ea44 264-267
+  s_2967c1d1a20f77::t_4dc495b74975bc 217
+mcp/apps-ui/automation-hub/src/generated/automation-hub-branch-schema.json
+  s_2967c1d1a20f77::t_846f5694199eb0 1-24
+  s_2967c1d1a20f77::t_128276aa1f9e2c 25-2640
+mcp/apps-ui/automation-hub/src/ui/form.html
+  s_2967c1d1a20f77::t_1d1740252b1639 9,11,13,15,17,20-28,30-31,34-44,51,54-70,75,91,93-100,106-107,109-110,117,122,126-131,136,142-143,146,148-150,154,159,162-163,165-173,175-176,178-179,193-194,197-200,204-206,209-210,216-228,230-231,234,237-242,245-246,249-254,256-258,260-263,267-269,272,274-275,281,284-285,289-294,298-303,305-307,309,315,321-342,344,346-349,351-352,354,356-357,359-361,363-366,369-372,377,381-382,388-391
+  s_2967c1d1a20f77::t_f2245edcf941db 183-188,190,264,304,314,350
+  s_2967c1d1a20f77::t_0bcd81c6c96579 207-208,211-213,215,286-287,295
+  s_2967c1d1a20f77::t_43cab3e0f12b5a 387
+  s_2967c1d1a20f77::t_ab1bc850e2f649 214
+mcp/apps-ui/automation-hub/package.json
+  s_2967c1d1a20f77::t_f97cd16fbf6118 16
+  s_2967c1d1a20f77::t_1075ab99486068 4
+  s_2967c1d1a20f77::t_e6de07e08187e2 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6106753b8916791ec3872247819fac23e5dd4039",
+  "prompts": {},
+  "sessions": {
+    "s_2967c1d1a20f77": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8a64cb5b-e813-41d6-b2c3-4fcface3a822",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
