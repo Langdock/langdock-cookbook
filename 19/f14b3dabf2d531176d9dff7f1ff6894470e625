@@ -1,0 +1,19 @@
+mcp/apps-ui/automation-hub/src/ui/form.html
+  s_f775e0a516199a::t_99e3a845f153fd 276-281,286,322,341-346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "19f14b3dabf2d531176d9dff7f1ff6894470e625",
+  "prompts": {},
+  "sessions": {
+    "s_f775e0a516199a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c8c8bf6b-0ff3-4483-9ab1-4140af694977",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
