@@ -1,0 +1,38 @@
+mcp/private-network-proxy/src/index.ts
+  s_25e3320f0006da::t_9f7b91107e705e 1-25
+mcp/README.md
+  s_25e3320f0006da::t_eda8c4a9da5952 15
+mcp/private-network-proxy/README.md
+  s_25e3320f0006da::t_0e0e323378fe9e 1-78
+mcp/private-network-proxy/src/proxy.ts
+  s_25e3320f0006da::t_3708aa64efe411 1-180
+mcp/private-network-proxy/package.json
+  s_25e3320f0006da::t_fd9959bb40faa1 9-11
+  s_25e3320f0006da::t_53273a3d2957df 1-8,12-23
+mcp/private-network-proxy/.env.example
+  s_25e3320f0006da::t_7c643db12cbf92 1-11
+README.md
+  s_25e3320f0006da::t_618777f84a2cd4 7
+mcp/private-network-proxy/tsconfig.json
+  s_25e3320f0006da::t_9b9cfa7008a70b 1-18
+mcp/private-network-proxy/.gitignore
+  s_25e3320f0006da::t_9d92d6476d059a 1-4
+mcp/private-network-proxy/src/private-mcp.ts
+  s_25e3320f0006da::t_625eb193f55cb1 1-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "85e9b9a4dc68cc2201b7e0247766a3f89d3a102d",
+  "prompts": {},
+  "sessions": {
+    "s_25e3320f0006da": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0d057d14-32e0-4ab9-9384-0235f363ce8c",
+        "model": "grok-4.6"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
