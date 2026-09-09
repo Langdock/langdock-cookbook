@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assistant</title>
+    <style>
+      :root {
+        --bg: #fff;
+        --text: #1f2026;
+        --muted: #727376;
+        --faint: #a1a1a3;
+        --line: #e8e7e4;
+        --well: #f5f4f2;
+        --user: #f5f4f2;
+        --user-line: #dddcd9;
+        --accent: #4469fc;
+        --accent-soft: #eef1fe;
+        --danger: #b42318;
+        --radius: 16px;
+        --header: 52px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1f2026;
+          --text: #fbfaf9;
+          --muted: #a1a1a3;
+          --faint: #727376;
+          --line: #37383d;
+          --well: #2b2c32;
+          --user: #2b2c32;
+          --user-line: #434449;
+          --accent-soft: #2a335c;
+          --danger: #f5a8a2;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        color: var(--text);
+        background: var(--bg);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: var(--header);
+        padding: 0 12px 0 14px;
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+      }
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+        background: var(--accent-soft);
+        font-size: 15px;
+        flex-shrink: 0;
+      }
+      .avatar[hidden] {
+        display: none;
+      }
+      .identity {
+        min-width: 0;
+        flex: 1;
+      }
+      h1 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ghost {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .ghost:hover {
+        background: var(--well);
+        color: var(--text);
+      }
+      .ghost svg {
+        width: 16px;
+        height: 16px;
+      }
+      #log {
+        flex: 1;
+        overflow: auto;
+        padding: 20px 16px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .empty {
+        margin: auto 0;
+        padding: 8px 8px 24px;
+        text-align: center;
+      }
+      .empty .avatar {
+        width: 40px;
+        height: 40px;
+        margin: 0 auto 12px;
+        font-size: 20px;
+        border-radius: 12px;
+      }
+      .empty p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .msg {
+        max-width: 88%;
+        overflow-wrap: anywhere;
+      }
+      .user {
+        align-self: flex-end;
+        padding: 8px 12px;
+        border: 1px solid var(--user-line);
+        border-radius: 16px 16px 4px 16px;
+        background: var(--user);
+        line-height: 1.45;
+      }
+      .assistant {
+        align-self: stretch;
+        max-width: 100%;
+        color: var(--text);
+        line-height: 1.55;
+      }
+      .assistant > *:first-child {
+        margin-top: 0;
+      }
+      .assistant > *:last-child {
+        margin-bottom: 0;
+      }
+      .assistant h2,
+      .assistant h3 {
+        margin: 1em 0 0.4em;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .assistant p {
+        margin: 0 0 0.7em;
+      }
+      .assistant ul,
+      .assistant ol {
+        margin: 0 0 0.7em;
+        padding-left: 1.2em;
+      }
+      .assistant li + li {
+        margin-top: 0.2em;
+      }
+      .assistant code {
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        background: var(--well);
+      }
+      .assistant a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .assistant a:hover {
+        text-decoration: underline;
+      }
+      .notice {
+        align-self: stretch;
+        max-width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--well);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        align-self: flex-start;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .dots {
+        display: flex;
+        gap: 3px;
+      }
+      .dots i {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--faint);
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+      .dots i:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .dots i:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      @keyframes pulse {
+        0%,
+        80%,
+        100% {
+          opacity: 0.35;
+          transform: translateY(0);
+        }
+        40% {
+          opacity: 1;
+          transform: translateY(-1px);
+        }
+      }
+      .starters {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .starters button {
+        max-width: 100%;
+        padding: 7px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.3;
+        text-align: left;
+        cursor: pointer;
+      }
+      .starters button:hover {
+        background: var(--well);
+      }
+      form {
+        flex-shrink: 0;
+        padding: 10px 12px 14px;
+      }
+      .composer {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        padding: 8px 8px 8px 8px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--bg);
+      }
+      .composer:focus-within {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+      }
+      .composer.drop {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+        background: var(--accent-soft);
+      }
+      .pending {
+        display: none;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 8px;
+      }
+      .pending:not(:empty) {
+        display: flex;
+      }
+      .chip {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 100%;
+        padding: 6px 28px 6px 6px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--well);
+        color: var(--text);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+      .chip img {
+        width: 36px;
+        height: 36px;
+        object-fit: cover;
+        border-radius: 8px;
+        background: var(--bg);
+      }
+      .chip .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 160px;
+      }
+      .chip .remove {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 20px;
+        height: 20px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .chip .remove:hover {
+        background: var(--bg);
+        color: var(--text);
+      }
+      .thumbs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 6px;
+      }
+      .thumbs img {
+        display: block;
+        max-width: 180px;
+        max-height: 140px;
+        border-radius: 10px;
+        object-fit: cover;
+      }
+      .file-chip {
+        display: inline-block;
+        padding: 4px 8px;
+        border: 1px solid var(--user-line);
+        border-radius: 8px;
+        background: var(--bg);
+        font-size: 12px;
+      }
+      .attach {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .attach:hover {
+        background: var(--well);
+        color: var(--text);
+      }
+      .attach svg {
+        width: 16px;
+        height: 16px;
+      }
+      textarea {
+        flex: 1;
+        resize: none;
+        min-height: 24px;
+        max-height: 120px;
+        margin: 6px 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        line-height: 1.45;
+      }
+      textarea:focus {
+        outline: none;
+      }
+      textarea::placeholder {
+        color: var(--faint);
+      }
+      .send {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+      }
+      .send:hover:not(:disabled) {
+        filter: brightness(1.06);
+      }
+      .send:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .send svg {
+        width: 16px;
+        height: 16px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dots i {
+          animation: none;
+          opacity: 0.7;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="avatar" id="emoji" hidden></span>
+      <div class="identity">
+        <h1 id="title">Assistant</h1>
+      </div>
+      <button class="ghost" id="reset" type="button" title="New chat" aria-label="New chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+    </header>
+    <div id="log"></div>
+    <form id="form">
+      <div id="pending" class="pending"></div>
+      <div class="composer" id="composer">
+        <button class="attach" id="attach" type="button" title="Attach file" aria-label="Attach file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.4 11.6l-8.8 8.8a6 6 0 0 1-8.5-8.5l8.8-8.8a4 4 0 0 1 5.7 5.7l-8.8 8.8a2 2 0 0 1-2.8-2.8l8.1-8.1" />
+          </svg>
+        </button>
+        <textarea
+          id="input"
+          rows="1"
+          placeholder="Ask a question or paste a screenshot"
+          autocomplete="off"
+        ></textarea>
+        <button class="send" type="submit" aria-label="Send" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </button>
+      </div>
+      <input
+        id="file"
+        type="file"
+        hidden
+        multiple
+        accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.docx,.doc,.pptx,.ppt,.json,.md"
+      />
+    </form>
+    <script>
+      const logEl = document.getElementById("log");
+      const form = document.getElementById("form");
+      const input = document.getElementById("input");
+      const sendBtn = form.querySelector(".send");
+      const titleEl = document.getElementById("title");
+      const emojiEl = document.getElementById("emoji");
+      const fileInput = document.getElementById("file");
+      const pendingEl = document.getElementById("pending");
+      const composer = document.getElementById("composer");
+      const messages = [];
+      const pending = [];
+      const MAX_FILE_BYTES = 20 * 1024 * 1024;
+      let starters = [];
+      let busy = false;
+
+      const escapeHtml = (value) =>
+        value
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+
+      const renderMarkdown = (value) => {
+        let html = escapeHtml(value);
+        html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+        html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+        html = html.replace(/^# (.+)$/gm, "<h2>$1</h2>");
+        html = html.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+        html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        html = html.replace(/(^|[\s(])\*(.+?)\*(?=[\s).,!?]|$)/g, "$1<em>$2</em>");
+        html = html.replace(/^(?:[-*] .+(?:\n|$))+/gm, (block) => {
+          const items = block
+            .trim()
+            .split("\n")
+            .map((line) => `<li>${line.replace(/^[-*] /, "")}</li>`)
+            .join("");
+          return `<ul>${items}</ul>`;
+        });
+        html = html
+          .split(/\n{2,}/)
+          .map((block) =>
+            /^(<h[23]|<ul)/.test(block) ? block : `<p>${block.replaceAll("\n", "<br>")}</p>`,
+          )
+          .join("");
+        return html;
+      };
+
+      const scrollToEnd = () => {
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      const syncComposer = () => {
+        input.style.height = "auto";
+        input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+        sendBtn.disabled = busy || (!input.value.trim() && !pending.length);
+      };
+
+      const isImage = (file) => file.type.startsWith("image/");
+
+      const renderPending = () => {
+        pendingEl.replaceChildren();
+        for (const item of pending) {
+          const chip = document.createElement("div");
+          chip.className = "chip";
+          if (item.previewUrl) {
+            const img = document.createElement("img");
+            img.src = item.previewUrl;
+            img.alt = item.file.name;
+            chip.appendChild(img);
+          }
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = item.file.name || "Screenshot";
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "remove";
+          remove.setAttribute("aria-label", "Remove attachment");
+          remove.textContent = "×";
+          remove.addEventListener("click", () => removePending(item.id));
+          chip.append(name, remove);
+          pendingEl.appendChild(chip);
+        }
+        syncComposer();
+      };
+
+      const clearPending = () => {
+        for (const item of pending) {
+          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        }
+        pending.splice(0);
+        renderPending();
+      };
+
+      const removePending = (id) => {
+        const index = pending.findIndex((item) => item.id === id);
+        if (index < 0) return;
+        const [item] = pending.splice(index, 1);
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        renderPending();
+      };
+
+      const addFiles = (files) => {
+        for (const file of files) {
+          if (!file || file.size <= 0) continue;
+          if (file.size > MAX_FILE_BYTES) {
+            addBubble("notice", `${file.name || "File"} is larger than 20MB.`);
+            continue;
+          }
+          pending.push({
+            id: crypto.randomUUID(),
+            file,
+            previewUrl: isImage(file) ? URL.createObjectURL(file) : "",
+          });
+        }
+        renderPending();
+      };
+
+      const renderEmpty = () => {
+        const wrap = document.createElement("div");
+        wrap.className = "empty";
+        wrap.innerHTML = `<div class="avatar">${emojiEl.hidden ? "" : emojiEl.textContent}</div><p>How can I help?</p>`;
+        if (emojiEl.hidden) wrap.querySelector(".avatar").hidden = true;
+        logEl.appendChild(wrap);
+        renderStarters();
+      };
+
+      const renderStarters = () => {
+        logEl.querySelector(".starters")?.remove();
+        if (!starters.length) return;
+        const wrap = document.createElement("div");
+        wrap.className = "starters";
+        for (const starter of starters) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = starter;
+          button.addEventListener("click", () => send(starter));
+          wrap.appendChild(button);
+        }
+        const empty = logEl.querySelector(".empty");
+        (empty || logEl).appendChild(wrap);
+      };
+
+      const addBubble = (role, text, previews = []) => {
+        const el = document.createElement("div");
+        el.className = `msg ${role}`;
+        if (role === "user" && previews.length) {
+          const thumbs = document.createElement("div");
+          thumbs.className = "thumbs";
+          for (const preview of previews) {
+            if (preview.previewUrl) {
+              const img = document.createElement("img");
+              img.src = preview.previewUrl;
+              img.alt = preview.name;
+              thumbs.appendChild(img);
+            } else {
+              const chip = document.createElement("span");
+              chip.className = "file-chip";
+              chip.textContent = preview.name;
+              thumbs.appendChild(chip);
+            }
+          }
+          el.appendChild(thumbs);
+        }
+        if (role === "assistant") el.innerHTML = renderMarkdown(text);
+        else if (text) {
+          const body = document.createElement("div");
+          body.textContent = text;
+          el.appendChild(body);
+        }
+        logEl.appendChild(el);
+        scrollToEnd();
+        return el;
+      };
+
+      const setStatus = (text) => {
+        let el = logEl.querySelector(".status");
+        if (!text) {
+          el?.remove();
+          return;
+        }
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "status";
+          el.innerHTML =
+            '<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="label"></span>';
+          logEl.appendChild(el);
+        }
+        el.querySelector(".label").textContent = text;
+        scrollToEnd();
+      };
+
+      const parseLine = (raw, acc) => {
+        if (!raw || raw === "[DONE]") {
+          if (raw === "[DONE]") acc.done = true;
+          return acc;
+        }
+        const payload = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
+        if (!payload) return acc;
+        const prefix = payload[0];
+        const rest = payload.slice(2);
+        if (prefix === "0") {
+          acc.text += JSON.parse(rest);
+          acc.onText(acc.text);
+          return acc;
+        }
+        if (prefix !== "{" && prefix !== "[") return acc;
+        try {
+          const event = JSON.parse(payload);
+          if (event.type === "text-delta") {
+            const piece =
+              typeof event.delta === "string"
+                ? event.delta
+                : typeof event.text === "string"
+                  ? event.text
+                  : "";
+            acc.text += piece;
+            if (piece) acc.onText(acc.text);
+          } else if (event.type === "tool-input-start") {
+            acc.usedTools = true;
+            if (event.toolCallId) {
+              acc.pendingTools.set(
+                event.toolCallId,
+                event.toolName || "a tool",
+              );
+            }
+            acc.onStatus(`Using ${event.toolName || "a tool"}…`);
+          } else if (event.type === "tool-input-available") {
+            acc.usedTools = true;
+            if (event.toolCallId) {
+              acc.pendingTools.set(
+                event.toolCallId,
+                event.toolName ||
+                  acc.pendingTools.get(event.toolCallId) ||
+                  "a tool",
+              );
+            }
+          } else if (
+            event.type === "tool-output-available" ||
+            event.type === "tool-output-error"
+          ) {
+            if (event.toolCallId) acc.pendingTools.delete(event.toolCallId);
+          } else if (event.type === "reasoning-start") {
+            acc.onStatus("Thinking…");
+          } else if (event.type === "finish" || event.type === "finish-step") {
+            acc.done = event.type === "finish" || acc.done;
+          } else if (event.type === "error") {
+            acc.error = event.errorText || event.message || "Request failed";
+          }
+        } catch {
+          // ignore keepalives / usage trailer
+        }
+        return acc;
+      };
+
+      const parseStream = async (response, onText, onStatus) => {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const acc = {
+          text: "",
+          error: "",
+          done: false,
+          usedTools: false,
+          pendingTools: new Map(),
+          onText,
+          onStatus,
+        };
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? "";
+          for (const line of lines) parseLine(line.trim(), acc);
+        }
+        if (buffer.trim()) parseLine(buffer.trim(), acc);
+        return acc;
+      };
+
+      const uploadPending = async () => {
+        const ids = [];
+        const previews = [];
+        for (const item of pending) {
+          const formData = new FormData();
+          formData.append(
+            "file",
+            item.file,
+            item.file.name || (isImage(item.file) ? "screenshot.png" : "attachment"),
+          );
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(
+              payload?.message || payload?.error || "Upload failed",
+            );
+          }
+          if (!payload?.attachmentId) {
+            throw new Error("Upload did not return an attachment id.");
+          }
+          ids.push(payload.attachmentId);
+          previews.push({
+            name: item.file.name || "Screenshot",
+            previewUrl: item.previewUrl,
+          });
+        }
+        pending.splice(0);
+        renderPending();
+        return { ids, previews };
+      };
+
+      const send = async (text, files = []) => {
+        if (files.length) addFiles(files);
+        const content = (text || "").trim();
+        if ((!content && !pending.length) || busy) return;
+        busy = true;
+        syncComposer();
+        logEl.querySelector(".empty")?.remove();
+        let attachments = [];
+        let previews = [];
+        try {
+          if (pending.length) {
+            setStatus("Uploading…");
+            ({ ids: attachments, previews } = await uploadPending());
+          }
+        } catch (error) {
+          setStatus("");
+          busy = false;
+          syncComposer();
+          addBubble(
+            "notice",
+            error instanceof Error ? error.message : "Upload failed.",
+          );
+          return;
+        }
+        const fallback = attachments.length
+          ? attachments.length === 1
+            ? "Please look at the attached file."
+            : "Please look at the attached files."
+          : "";
+        const messageText = content || fallback;
+        addBubble("user", messageText, previews);
+        const userMessage = {
+          id: crypto.randomUUID(),
+          role: "user",
+          parts: [{ type: "text", text: messageText }],
+        };
+        if (attachments.length) {
+          userMessage.metadata = { attachments };
+        }
+        messages.push(userMessage);
+        let bubble = null;
+        const writeText = (next) => {
+          setStatus("");
+          if (!bubble) bubble = addBubble("assistant", next);
+          else bubble.innerHTML = renderMarkdown(next);
+          scrollToEnd();
+        };
+        setStatus("Thinking…");
+        try {
+          const response = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages, stream: true }),
+          });
+          const type = response.headers.get("content-type") || "";
+          let reply = "";
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.message || "Request failed");
+          }
+          if (type.includes("json") && !type.includes("event-stream")) {
+            const payload = await response.json();
+            const last = [...(payload.messages || [])]
+              .reverse()
+              .find((message) => message.role === "assistant");
+            reply = last?.content || "";
+            if (reply) writeText(reply);
+          } else {
+            const acc = await parseStream(response, writeText, setStatus);
+            reply = acc.text;
+            if (!reply && acc.error) throw new Error(acc.error);
+            if (!reply) {
+              const pending = [...acc.pendingTools.values()].filter(Boolean);
+              const unique = [...new Set(pending)];
+              const toolLabel = unique.slice(0, 3).join(", ");
+              throw new Error(
+                unique.length
+                  ? `Paused on ${toolLabel}. This chat cannot approve actions. Turn off confirmation on the agent, then start a new chat.`
+                  : acc.usedTools && !acc.done
+                    ? "The reply was cut off. Try again."
+                    : acc.usedTools
+                      ? "The assistant used tools but did not return a message."
+                      : "No response.",
+              );
+            }
+          }
+          setStatus("");
+          if (!reply) {
+            addBubble("notice", "No response.");
+            return;
+          }
+          messages.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            parts: [{ type: "text", text: reply }],
+          });
+        } catch (error) {
+          setStatus("");
+          bubble?.remove();
+          addBubble(
+            "notice",
+            error instanceof Error ? error.message : "Something went wrong.",
+          );
+        } finally {
+          busy = false;
+          syncComposer();
+          input.focus();
+        }
+      };
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = input.value.trim();
+        input.value = "";
+        syncComposer();
+        send(text);
+      });
+
+      document.getElementById("reset").addEventListener("click", () => {
+        if (busy) return;
+        messages.splice(0);
+        clearPending();
+        logEl.replaceChildren();
+        renderEmpty();
+        input.focus();
+      });
+
+      document.getElementById("attach").addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", () => {
+        addFiles(fileInput.files);
+        fileInput.value = "";
+        input.focus();
+      });
+
+      input.addEventListener("input", syncComposer);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          form.requestSubmit();
+        }
+      });
+      input.addEventListener("paste", (event) => {
+        const files = [...(event.clipboardData?.items || [])]
+          .filter((item) => item.kind === "file")
+          .map((item) => item.getAsFile())
+          .filter(Boolean);
+        if (!files.length) return;
+        event.preventDefault();
+        addFiles(files);
+        const pasted = event.clipboardData.getData("text/plain");
+        if (pasted) {
+          input.value += pasted;
+          syncComposer();
+        }
+      });
+
+      const onDrag = (event) => {
+        if (![...event.dataTransfer.types].includes("Files")) return;
+        event.preventDefault();
+        composer.classList.toggle("drop", event.type !== "dragleave");
+      };
+      form.addEventListener("dragover", onDrag);
+      form.addEventListener("dragenter", onDrag);
+      form.addEventListener("dragleave", onDrag);
+      form.addEventListener("drop", (event) => {
+        if (![...event.dataTransfer.types].includes("Files")) return;
+        event.preventDefault();
+        composer.classList.remove("drop");
+        addFiles(event.dataTransfer.files);
+      });
+
+      fetch("/config")
+        .then((response) => response.json())
+        .then((config) => {
+          titleEl.textContent = config.name || "Assistant";
+          document.title = titleEl.textContent;
+          if (config.emoji) {
+            emojiEl.textContent = config.emoji;
+            emojiEl.hidden = false;
+          }
+          if (config.conversationStarters?.length) {
+            starters = config.conversationStarters;
+          }
+          if (!messages.length) {
+            logEl.replaceChildren();
+            renderEmpty();
+          }
+        })
+        .catch(() => {});
+
+      renderEmpty();
+      syncComposer();
+      input.focus();
+    </script>
+  </body>
+</html>
