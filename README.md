@@ -4,7 +4,7 @@ Self-contained recipes for common tasks when building on Langdock. Each recipe
 is a small, runnable project focused on a single use case, with a README that
 explains how it works.
 
-- **[MCP recipes](mcp/)** — authentication (OAuth + DCR), interactive UI, file uploads
+- **[MCP recipes](mcp/)** — authentication (OAuth + DCR), interactive UI, file uploads, private-network proxy
 - **[A2A recipes](a2a/)** — agents on the A2A protocol
 
 Each section's README lists its recipes; each recipe folder is standalone with

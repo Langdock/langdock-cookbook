@@ -12,6 +12,7 @@ servers, grouped by the problem they solve.
 | **Apps & UI** | [`apps/drawio/`](apps/drawio/) | Embedding an editable draw.io diagram editor inside the MCP client — no auth, fully client-side. |
 | **Apps & UI** | [`apps/servicenow/`](apps/servicenow/) | Interactive in-chat ServiceNow records — discover task tickets with user-friendly filters, create records, and edit ticket fields, state, and activity — with OAuth + Dynamic Client Registration. |
 | **File uploads** | [`file-uploads/`](file-uploads/) | Accepting file inputs and resolving Langdock file references into structured `FileData`. |
+| **Private network** | [`private-network-proxy/`](private-network-proxy/) | Public IP-allowlisted hop in front of an internal Streamable HTTP MCP. |
 
 New to OAuth + Dynamic Client Registration for MCP? Start with the shared
 explainer in [`authentication/`](authentication/) before diving into the Okta or
