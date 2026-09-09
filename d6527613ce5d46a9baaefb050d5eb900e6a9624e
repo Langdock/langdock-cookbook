@@ -1,0 +1,32 @@
+mcp/apps-ui/automation-hub/src/scripts/test-schema.ts
+  s_fb8d36f68efea0::t_87e759ea8d1126 58-66
+  s_fb8d36f68efea0::t_4742834a58b7d9 10-13
+mcp/apps-ui/automation-hub/src/automationhub/fixtures/idea-schema.sample.json
+  s_fb8d36f68efea0::t_a16b34f39b63f2 130-132
+mcp/apps-ui/automation-hub/src/index.ts
+  s_fb8d36f68efea0::t_4f70464023d95b 570,580-581,591,593
+mcp/apps-ui/automation-hub/src/ui/form.html
+  s_fb8d36f68efea0::t_101b1a97e00977 316,322-366
+  s_fb8d36f68efea0::t_6a07a9cdbdf077 1285-1311,1317
+  s_fb8d36f68efea0::t_a857019f001f4f 367
+mcp/apps-ui/automation-hub/src/automationhub/draftSync.ts
+  s_fb8d36f68efea0::t_a4f9f799141a75 112-123,134,143-171
+  s_fb8d36f68efea0::t_8adfe558d2c7cb 172,515-528,537-541,562-563,586-591,597-598,600,602
+  s_fb8d36f68efea0::t_0a02029ebf51a9 173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "d6527613ce5d46a9baaefb050d5eb900e6a9624e",
+  "prompts": {},
+  "sessions": {
+    "s_fb8d36f68efea0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d320e115-7341-4717-af4c-cca02c58dbea",
+        "model": "default"
+      },
+      "human_author": "Alessandro <alessandro.maugeri@langdock.com>"
+    }
+  }
+}
