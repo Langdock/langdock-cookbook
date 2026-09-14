@@ -9,6 +9,7 @@ servers, grouped by the problem they solve.
 | **Authentication** | [`authentication/entra-dcr/`](authentication/entra-dcr/) | OAuth 2.0 delegating to **Microsoft Entra ID**, with Dynamic Client Registration. |
 | **Authentication** | [`authentication/keycloak-dcr/`](authentication/keycloak-dcr/) | OAuth 2.0 delegating to **Keycloak**, with Dynamic Client Registration. |
 | **Apps & UI** | [`apps/google-maps/`](apps/google-maps/) | Rendering an interactive, embedded UI (a live Google Map) inside the MCP client. |
+| **Apps & UI** | [`apps/arcgis/`](apps/arcgis/) | Authoring **custom ArcGIS web maps** (org layers, Living Atlas, save to portal) with a live map UI on every edit. OAuth + DCR. |
 | **Apps & UI** | [`apps/drawio/`](apps/drawio/) | Embedding an editable draw.io diagram editor inside the MCP client — no auth, fully client-side. |
 | **Apps & UI** | [`apps/servicenow/`](apps/servicenow/) | Interactive in-chat ServiceNow records — discover task tickets with user-friendly filters, create records, and edit ticket fields, state, and activity — with OAuth + Dynamic Client Registration. |
 | **File uploads** | [`file-uploads/`](file-uploads/) | Accepting file inputs and resolving Langdock file references into structured `FileData`. |
