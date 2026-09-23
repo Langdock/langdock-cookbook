@@ -6,6 +6,7 @@ explains how it works.
 
 - **[MCP recipes](mcp/)** — authentication (OAuth + DCR), interactive UI, file uploads
 - **[A2A recipes](a2a/)** — agents on the A2A protocol
+- **[Agent API recipes](agents/)** — embed a Langdock agent on your own site
 
 Each section's README lists its recipes; each recipe folder is standalone with
 its own README.
