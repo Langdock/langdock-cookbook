@@ -1,0 +1,80 @@
+mcp/apps/servicenow/src/otto/ottoChat.ts
+  s_1b322228885fd6::t_8ce1051b5d4e5b 1-178
+mcp/README.md
+  s_1b322228885fd6::t_e01d52ebdf8e90 14
+mcp/apps/servicenow/src/ui/ticket.html
+  s_1b322228885fd6::t_f672bcd8d785e4 950,954-1058
+  s_1b322228885fd6::t_5f068ad0055ca6 890-894,896,898,905-913,915
+  s_1b322228885fd6::t_eef506a59f778d 490-528,530
+  s_1b322228885fd6::t_90164d26bc314b 1080-1081,1083-1088,1092-1094
+  s_1b322228885fd6::t_3bb0487e99e7d8 657-660
+  s_1b322228885fd6::t_0565bd72a1e188 1386
+mcp/apps/servicenow/src/ui/otto-chat.html
+  s_1b322228885fd6::t_5356a5f86f95dc 7
+  s_1b322228885fd6::t_6b45e5096fbd24 353
+  s_1b322228885fd6::t_b54fe7109f7960 350-352,358,360-368,373,378,380-381
+  s_1b322228885fd6::t_04df7c6fbd1526 474,480,489-494,496-499
+  s_1b322228885fd6::t_090fd4531155f1 22
+  s_1b322228885fd6::t_016f8a2cf399bf 462,465-466
+  s_1b322228885fd6::t_2b5091f7ca1b22 2
+  s_1b322228885fd6::t_46047fee8869b4 31-32
+  s_1b322228885fd6::t_8a18c698fff361 220
+  s_1b322228885fd6::t_5e7b748dfd9bfb 513
+  s_1b322228885fd6::t_cd59c4564b0df6 1,3-6,8-21,23-30,33-219,221-278,281-349,354-357,359,369-372,374-377,379,382-461,463-464,467-473,475-479,481-488,495,500-512,514-598
+  s_1b322228885fd6::t_9fb2e0c937bd83 279-280
+mcp/apps/servicenow/src/utils/withOttoChat.ts
+  s_1b322228885fd6::t_b954c058be90fd 1-19
+mcp/apps/servicenow/src/ui/ticket-list.html
+  s_1b322228885fd6::t_6ad0fb60b711d2 399-404
+  s_1b322228885fd6::t_fa661d402b6b63 84-87,90-94,97,104-121,128,136-200
+  s_1b322228885fd6::t_99551e665d14d9 354-355
+  s_1b322228885fd6::t_42c84bb4cd04cc 322-327,334-335
+  s_1b322228885fd6::t_658c8c22576ebf 384-387
+  s_1b322228885fd6::t_2e3254287a9bde 42-48,50
+mcp/apps/servicenow/src/servicenow/client.ts
+  s_1b322228885fd6::t_de48969695dfcd 1096-1153
+  s_1b322228885fd6::t_d6e63321c004a2 1070,1080
+mcp/apps/servicenow/src/servicenow/currentUser.ts
+  s_1b322228885fd6::t_2813be07c78653 3,5-6,9-32,34-36,42,45,50
+mcp/apps/servicenow/src/otto/conversations.ts
+  s_1b322228885fd6::t_e56d3465e123be 155
+  s_1b322228885fd6::t_1ebd7ee7b87bab 1-154,156-304,309-655
+  s_1b322228885fd6::t_17e4783e9ecdf8 305-308
+mcp/apps/servicenow/src/index.ts
+  s_1b322228885fd6::t_867fea9092ac76 1190-1203
+  s_1b322228885fd6::t_b7500e3a6cb65c 256-269
+  s_1b322228885fd6::t_3c364e13ffbf2c 219-221
+  s_1b322228885fd6::t_74cb315199474e 37-47
+  s_1b322228885fd6::t_06abf179fcfdf5 675,677
+  s_1b322228885fd6::t_99d719006e1f70 1125
+  s_1b322228885fd6::t_0cb30f0ba9b457 1159-1189,1204-1351
+mcp/apps/servicenow/src/utils/getTicketListHtml.ts
+  s_1b322228885fd6::t_e406ecafc748fe 5-6,13-14
+mcp/apps/servicenow/src/utils/getTicketHtml.ts
+  s_1b322228885fd6::t_b7d3ad98908bd1 5-6,13-14
+mcp/apps/servicenow/README.md
+  s_1b322228885fd6::t_70e1b7296fa478 430,434
+  s_1b322228885fd6::t_f79c5cd8599633 11
+  s_1b322228885fd6::t_9c09330b6a3e2f 125
+  s_1b322228885fd6::t_8c4ac2e3c3a46b 111-112
+  s_1b322228885fd6::t_295954f056fccc 271-292
+  s_1b322228885fd6::t_77f0cad1d6c529 338-421
+  s_1b322228885fd6::t_bb0cad01d219a2 455
+  s_1b322228885fd6::t_e9de03d1d56966 85-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c827adaad2d37d2969f485b27dfea58fe218a28b",
+  "prompts": {},
+  "sessions": {
+    "s_1b322228885fd6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4f57506f-53d1-489b-8dc0-0a6ff5ae5139",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
