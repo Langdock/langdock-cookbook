@@ -7,6 +7,7 @@ import {
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import cors from "cors";
 import express from "express";
 import type { Request, Response } from "express";
@@ -33,6 +34,18 @@ import {
   uploadAttachment,
   updateRecord,
 } from "./servicenow/client.js";
+import { TaskRegistry } from "./tasks/taskRegistry.js";
+import { resolveTaskOwner } from "./tasks/taskOwner.js";
+import {
+  DEFAULT_WATCH_MINUTES,
+  INLINE_WATCH_MS,
+  MAX_WATCH_MINUTES,
+  WATCH_CONDITIONS,
+  WATCH_POLL_MS,
+  describeWatchStart,
+  loadWatchTarget,
+  runTicketWatch,
+} from "./tasks/watchTicket.js";
 import { encodeForDataAttr } from "./utils/encodeForDataAttr.js";
 import { extractCustomHeaders } from "./utils/extractCustomHeaders.js";
 import { getBaseUrl } from "./utils/getBaseUrl.js";
@@ -43,6 +56,7 @@ import { getInstanceUrl } from "./utils/getInstanceUrl.js";
 import { safeJsonForHtml } from "./utils/safeJsonForHtml.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const TASK_RESULT_RETENTION_MS = 15 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Express App Setup
@@ -56,6 +70,7 @@ app.use(express.urlencoded({ extended: true }));
 
 const baseUrl = getBaseUrl();
 const oauthProvider = new ServiceNowOAuthProvider();
+const taskRegistry = new TaskRegistry();
 
 // ---------------------------------------------------------------------------
 // OAuth Endpoints
@@ -161,7 +176,11 @@ app.all("/mcp", async (req: Request, res: Response) => {
     }
 
     const customHeaders = extractCustomHeaders(req.headers);
-    const server = createMcpServer(token, customHeaders);
+    // Without a `task` parameter the SDK waits for task tools inside this
+    // request, so long-running tools shorten their window for these callers.
+    const inlineToolCall =
+      req.body?.method === "tools/call" && !req.body?.params?.task;
+    const server = createMcpServer(token, customHeaders, { inlineToolCall });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
@@ -224,11 +243,23 @@ function formatTicketResults(
 function createMcpServer(
   token: string,
   customHeaders: Record<string, string> = {},
+  { inlineToolCall = false }: { inlineToolCall?: boolean } = {},
 ): McpServer {
-  const server = new McpServer({
-    name: "servicenow-mcp-server",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    {
+      name: "servicenow-mcp-server",
+      version: "1.0.0",
+    },
+    {
+      capabilities: {
+        tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } },
+      },
+      taskStore: taskRegistry.forRequest({
+        resolveOwner: () => resolveTaskOwner(token, customHeaders),
+        credentials: { token, headers: customHeaders },
+      }),
+    },
+  );
 
   const formResourceUri = "ui://servicenow/form";
   const ticketResourceUri = "ui://servicenow/ticket";
@@ -1101,6 +1132,94 @@ function createMcpServer(
           isError: true,
         };
       }
+    },
+  );
+
+  // Tool: Watch a ticket in the background as an MCP task
+  server.experimental.tasks.registerToolTask(
+    "watch_ticket",
+    {
+      title: "Watch Ticket",
+      description:
+        "Watch a ServiceNow ticket in the background and report back when it changes. Use when the user wants to wait for, follow, or be told about updates, e.g. “tell me when INC0010023 is resolved” or “let me know when someone replies”. Runs as an MCP task: each intermediate change is posted as the task's status message, and the result summarizes every change observed once the stop condition is met or the watch window ends.",
+      inputSchema: {
+        id: z
+          .string()
+          .describe("The ticket sys_id or number (e.g. INC0010023)"),
+        table: z
+          .string()
+          .optional()
+          .describe(
+            "Optional ServiceNow table name. Omit it to detect the ticket's task type automatically.",
+          ),
+        until: z
+          .enum(WATCH_CONDITIONS)
+          .optional()
+          .describe(
+            "When to stop: any_update (default) on the first change of any kind, state_change when the state changes, new_activity on a new comment or work note, resolved_or_closed once the ticket is resolved, closed, or cancelled.",
+          ),
+        target_state: filterValue
+          .optional()
+          .describe(
+            "Stop once the state matches one of these values or labels, e.g. “Resolved”. Takes precedence over until.",
+          ),
+        timeout_minutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_WATCH_MINUTES)
+          .optional()
+          .describe(
+            `How long to watch before reporting back, default ${DEFAULT_WATCH_MINUTES}`,
+          ),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      execution: { taskSupport: "optional" },
+    },
+    {
+      createTask: async (
+        { id, table, until, target_state, timeout_minutes },
+        extra,
+      ) => {
+        const windowMs = inlineToolCall
+          ? INLINE_WATCH_MS
+          : (timeout_minutes ?? DEFAULT_WATCH_MINUTES) * 60_000;
+        const task = await extra.taskStore.createTask({
+          // The task must outlive the watch window, whatever TTL was requested.
+          ttl: Math.max(
+            extra.taskRequestedTtl ?? 0,
+            windowMs + TASK_RESULT_RETENTION_MS,
+          ),
+          pollInterval: inlineToolCall ? 1000 : 5000,
+        });
+        // Tool errors on a task-augmented call belong in the task result.
+        try {
+          const target = await loadWatchTarget(table, id, token, customHeaders);
+          const settings = {
+            until: until ?? "any_update",
+            targetStates:
+              target_state == null ? undefined : [target_state].flat(),
+            deadline: Date.now() + windowMs,
+            pollMs: Math.min(WATCH_POLL_MS, windowMs),
+            windowNote: inlineToolCall
+              ? `This client waits for tool results inline, so the watch was limited to ${INLINE_WATCH_MS / 1000} seconds. Call watch_ticket again to keep watching.`
+              : undefined,
+          };
+          taskRegistry.report(task.taskId, describeWatchStart(target, settings));
+          void runTicketWatch(taskRegistry, task.taskId, target, settings);
+        } catch (error) {
+          taskRegistry.finish(
+            task.taskId,
+            "failed",
+            { content: [{ type: "text", text: String(error) }], isError: true },
+            String(error),
+          );
+        }
+        return { task: await extra.taskStore.getTask(task.taskId) };
+      },
+      getTask: async (_args, extra) => extra.taskStore.getTask(extra.taskId),
+      getTaskResult: async (_args, extra) =>
+        (await extra.taskStore.getTaskResult(extra.taskId)) as CallToolResult,
     },
   );
 

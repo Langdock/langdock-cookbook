@@ -980,20 +980,29 @@ export async function getRecord(
   idOrNumber: string,
   accessToken: string,
   extraHeaders: Record<string, string> = {},
+  fields?: readonly string[],
 ): Promise<TicketRecord> {
   const instanceUrl = getInstanceUrl();
   const headers = buildHeaders(accessToken, extraHeaders);
   const id = idOrNumber.trim();
   const validatedTable = validateTableName(table);
+  const fieldParams: Record<string, string> = fields?.length
+    ? { sysparm_fields: fields.map(validateFilterField).join(",") }
+    : {};
 
   let url: string;
   if (looksLikeSysId(id)) {
-    url = `${instanceUrl}/api/now/table/${tablePath(validatedTable)}/${validateSysId(id)}?sysparm_display_value=all`;
+    const params = new URLSearchParams({
+      sysparm_display_value: "all",
+      ...fieldParams,
+    });
+    url = `${instanceUrl}/api/now/table/${tablePath(validatedTable)}/${validateSysId(id)}?${params}`;
   } else {
     const params = new URLSearchParams({
       sysparm_query: `number=${escapeQueryValue(id)}`,
       sysparm_display_value: "all",
       sysparm_limit: "1",
+      ...fieldParams,
     });
     url = `${instanceUrl}/api/now/table/${tablePath(validatedTable)}?${params}`;
   }
@@ -1022,6 +1031,7 @@ export async function getRecordWithTaskFallback(
   idOrNumber: string,
   accessToken: string,
   extraHeaders: Record<string, string> = {},
+  fields?: readonly string[],
 ): Promise<{ record: TicketRecord; recordTable: string }> {
   try {
     return {
@@ -1030,6 +1040,7 @@ export async function getRecordWithTaskFallback(
         idOrNumber,
         accessToken,
         extraHeaders,
+        fields,
       ),
       recordTable: preferredTable,
     };
@@ -1046,10 +1057,42 @@ export async function getRecordWithTaskFallback(
         idOrNumber,
         accessToken,
         extraHeaders,
+        fields,
       ),
       recordTable: "task",
     };
   }
+}
+
+export interface CurrentUser {
+  sysId: string;
+  userName: string;
+}
+
+/** Resolve the ServiceNow user an access token belongs to. */
+export async function getCurrentUser(
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<CurrentUser> {
+  const params = new URLSearchParams({
+    sysparm_query: "sys_id=javascript:gs.getUserID()",
+    sysparm_fields: "sys_id,user_name",
+    sysparm_limit: "1",
+  });
+  const response = await fetch(
+    `${getInstanceUrl()}/api/now/table/sys_user?${params}`,
+    { method: "GET", headers: buildHeaders(accessToken, extraHeaders) },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ServiceNow API error (${response.status}): ${errorText}`);
+  }
+  const data = await response.json();
+  const user = Array.isArray(data.result) ? data.result[0] : undefined;
+  if (!user?.sys_id) {
+    throw new Error("Could not resolve the current ServiceNow user");
+  }
+  return { sysId: String(user.sys_id), userName: String(user.user_name ?? "") };
 }
 
 /**
