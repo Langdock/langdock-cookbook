@@ -1,0 +1,598 @@
+<style>
+  .otto-chat [hidden] { display: none !important; }
+  .otto-chat { --otto-fg: #18181b; --otto-muted: #71717a; --otto-border: #e4e4e7; --otto-surface: #f4f4f5; --otto-accent: #18181b; --otto-accent-fg: #fafafa; --otto-user: #18181b; --otto-user-fg: #fafafa; display: flex; flex-direction: column; gap: 10px; color: var(--otto-fg); font-size: 14px; line-height: 1.5; }
+  .otto-context { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--otto-border); border-radius: 8px; background: #fafafa; font-size: 12px; color: var(--otto-muted); }
+  .otto-context strong { color: var(--otto-fg); font-weight: 600; }
+  .otto-context .otto-context-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .otto-log { display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: 440px; overflow-y: auto; padding: 4px 2px; }
+  .otto-empty { margin: auto 0; padding: 18px 8px; text-align: center; color: var(--otto-muted); }
+  .otto-empty h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--otto-fg); }
+  .otto-empty p { margin: 0 0 14px; font-size: 13px; }
+  .otto-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .otto-chip, .otto-option { padding: 5px 10px; border: 1px solid var(--otto-border); border-radius: 999px; background: #fff; color: var(--otto-fg); cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
+  .otto-chip:hover, .otto-option:hover:not(:disabled) { border-color: #a1a1aa; background: #fafafa; }
+  .otto-option:disabled { cursor: default; opacity: .55; }
+  .otto-option.selected { border-color: var(--otto-accent); background: var(--otto-accent); color: var(--otto-accent-fg); opacity: 1; }
+  .otto-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; }
+  .otto-row.user { align-items: flex-end; }
+  .otto-row.system { align-items: center; }
+  .otto-author { font-size: 11px; font-weight: 600; color: var(--otto-muted); padding: 0 4px; }
+  .otto-bubble { max-width: 88%; padding: 8px 12px; border-radius: 14px; background: var(--otto-surface); overflow-wrap: anywhere; }
+  .otto-row.user .otto-bubble { background: var(--otto-user); color: var(--otto-user-fg); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+  .otto-row.user.pending .otto-bubble { opacity: .6; }
+  .otto-row.otto .otto-bubble, .otto-row.agent .otto-bubble { border-bottom-left-radius: 4px; }
+  .otto-row.agent .otto-bubble { background: #eff6ff; }
+  .otto-bubble p { margin: 0 0 6px; }
+  .otto-bubble p:last-child, .otto-bubble ul:last-child, .otto-bubble ol:last-child { margin-bottom: 0; }
+  .otto-bubble ul, .otto-bubble ol { margin: 0 0 6px; padding-left: 20px; }
+  .otto-bubble table { border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+  .otto-bubble th, .otto-bubble td { border: 1px solid var(--otto-border); padding: 3px 6px; text-align: left; }
+  .otto-bubble img { max-width: 100%; border-radius: 8px; display: block; }
+  .otto-bubble a, .otto-card a, .otto-link-button { color: #1d4ed8; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .otto-link-button { padding: 0; border: 0; background: none; font: inherit; }
+  .otto-ticket { padding: 0 4px; border: 1px solid #bfdbfe; border-radius: 4px; background: #eff6ff; color: #1d4ed8; cursor: pointer; font: inherit; font-size: .95em; font-weight: 600; }
+  .otto-ticket:hover { background: #dbeafe; }
+  .otto-row.user .otto-ticket { border-color: transparent; background: rgba(255,255,255,.18); color: inherit; }
+  .otto-ref { font-size: 10px; vertical-align: super; color: #1d4ed8; cursor: pointer; border: 0; background: none; padding: 0 1px; font-weight: 600; }
+  .otto-context-tag { font-size: 11px; color: var(--otto-muted); padding: 0 4px; }
+  .otto-sources { display: flex; flex-wrap: wrap; gap: 6px; max-width: 88%; }
+  .otto-source { display: inline-flex; gap: 4px; max-width: 100%; padding: 2px 8px; border: 1px solid var(--otto-border); border-radius: 999px; background: #fff; color: var(--otto-fg); cursor: pointer; font: inherit; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .otto-source b { color: var(--otto-muted); font-weight: 600; }
+  .otto-options { display: flex; flex-wrap: wrap; gap: 6px; max-width: 88%; }
+  .otto-card { width: min(100%, 360px); border: 1px solid var(--otto-border); border-radius: 10px; overflow: hidden; background: #fff; }
+  .otto-card img { width: 100%; display: block; }
+  .otto-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .otto-card-title { font-weight: 600; }
+  .otto-card-subtitle { font-size: 12px; color: var(--otto-muted); }
+  .otto-card dl { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; }
+  .otto-card dt { color: var(--otto-muted); }
+  .otto-card dd { margin: 0; }
+  .otto-card-actions { display: flex; gap: 10px; margin-top: 6px; font-size: 12px; }
+  .otto-links { display: flex; flex-direction: column; gap: 6px; width: min(100%, 420px); }
+  .otto-links-header { font-size: 12px; font-weight: 600; color: var(--otto-muted); }
+  .otto-link-row { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--otto-border); border-radius: 8px; background: #fff; color: var(--otto-fg); cursor: pointer; font: inherit; text-align: left; }
+  .otto-link-row:hover { border-color: #a1a1aa; }
+  .otto-link-row span { display: block; font-size: 12px; color: var(--otto-muted); }
+  .otto-steps { width: min(100%, 420px); border: 1px solid var(--otto-border); border-radius: 8px; background: #fff; font-size: 12px; }
+  .otto-steps summary { padding: 6px 10px; cursor: pointer; color: var(--otto-muted); font-weight: 600; }
+  .otto-steps ol { margin: 0; padding: 0 10px 8px 28px; }
+  .otto-steps li { padding: 2px 0; }
+  .otto-steps li.done::marker { color: #15803d; }
+  .otto-notice { max-width: 90%; font-size: 12px; color: var(--otto-muted); text-align: center; }
+  .otto-notice.error { color: #b91c1c; }
+  .otto-inline-input { display: flex; gap: 6px; margin-top: 6px; }
+  .otto-inline-input input { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--otto-border); border-radius: 6px; font: inherit; }
+  .otto-typing { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 14px; border-bottom-left-radius: 4px; background: var(--otto-surface); color: var(--otto-muted); font-size: 12px; }
+  .otto-dots { display: inline-flex; gap: 3px; }
+  .otto-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: otto-blink 1.2s infinite ease-in-out; }
+  .otto-dots i:nth-child(2) { animation-delay: .2s; }
+  .otto-dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes otto-blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .otto-cursor::after { content: "▍"; margin-left: 1px; animation: otto-blink 1s infinite; }
+  .otto-composer { display: flex; align-items: flex-end; gap: 8px; padding: 8px; border: 1px solid var(--otto-border); border-radius: 12px; background: #fff; }
+  .otto-composer:focus-within { border-color: #a1a1aa; }
+  .otto-composer textarea { flex: 1; min-height: 22px; max-height: 120px; resize: none; border: 0; outline: none; font: inherit; line-height: 1.45; background: transparent; color: inherit; }
+  .otto-send { height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--otto-accent); color: var(--otto-accent-fg); cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; }
+  .otto-send:disabled { opacity: .4; cursor: default; }
+  .otto-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; color: var(--otto-muted); }
+  .otto-footer button { border: 0; background: none; padding: 0; color: var(--otto-muted); cursor: pointer; font: inherit; }
+  .otto-footer button:hover { color: var(--otto-fg); text-decoration: underline; }
+  .otto-status { margin-left: auto; }
+  .otto-status.live { color: #1d4ed8; font-weight: 600; }
+</style>
+<script>
+  (function () {
+    var TICKET_PATTERN = /\b((?:INC|RITM|REQ|SCTASK|CHG|CTASK|PRB|PTASK|TASK|CS|WO|WOT|HRC|HRT|SIR|STASK|IDEA|DMND)\d{6,10})\b/g;
+    var POLL_SECONDS = 15;
+    var CONTEXT_MESSAGES = 12;
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function isHttpUrl(value) {
+      return /^https?:\/\//i.test(String(value || "").trim());
+    }
+
+    function el(tag, className, html) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (html != null) node.innerHTML = html;
+      return node;
+    }
+
+    function linkTickets(html) {
+      return html.replace(TICKET_PATTERN, '<button type="button" class="otto-ticket" data-ticket="$1">$1</button>');
+    }
+
+    function inlineMarkdown(text, citations) {
+      var links = [];
+      var html = escapeHtml(text).replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, label, url) {
+        var decoded = url.replace(/&amp;/g, "&");
+        if (!isHttpUrl(decoded)) return label;
+        links.push('<a data-url="' + escapeHtml(decoded) + '">' + label + "</a>");
+        return "\u0000" + (links.length - 1) + "\u0000";
+      });
+      html = html
+        .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+        .replace(/`([^`]+)`/g, "<code>$1</code>");
+      html = linkTickets(html);
+      html = html.replace(/\u200b?\[(\d+)\]\u200b?/g, function (match, ref) {
+        var citation = (citations || []).find(function (c) { return c.ref === "[" + ref + "]"; });
+        return citation ? '<button type="button" class="otto-ref" data-url="' + escapeHtml(citation.url) + '" title="' + escapeHtml(citation.label) + '">' + ref + "</button>" : match;
+      });
+      return html.replace(/\u0000(\d+)\u0000/g, function (_, index) { return links[Number(index)]; }).replace(/\u200b/g, "");
+    }
+
+    function markdown(text, citations) {
+      var out = [];
+      var list = null;
+      var paragraph = [];
+      function flushParagraph() {
+        if (paragraph.length) out.push("<p>" + paragraph.join("<br>") + "</p>");
+        paragraph = [];
+      }
+      function flushList() {
+        if (list) out.push("<" + list.tag + ">" + list.items.map(function (item) { return "<li>" + item + "</li>"; }).join("") + "</" + list.tag + ">");
+        list = null;
+      }
+      String(text || "").split("\n").forEach(function (line) {
+        var bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+        var numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+        if (bullet || numbered) {
+          flushParagraph();
+          var tag = bullet ? "ul" : "ol";
+          if (!list || list.tag !== tag) { flushList(); list = { tag: tag, items: [] }; }
+          list.items.push(inlineMarkdown((bullet || numbered)[1], citations));
+        } else if (!line.trim()) {
+          flushParagraph();
+          flushList();
+        } else {
+          flushList();
+          paragraph.push(inlineMarkdown(line, citations));
+        }
+      });
+      flushParagraph();
+      flushList();
+      return out.join("");
+    }
+
+    var ALLOWED_TAGS = { P: 1, BR: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TH: 1, TD: 1, SPAN: 1, DIV: 1, CODE: 1, PRE: 1, A: 1, H1: 1, H2: 1, H3: 1, H4: 1 };
+    var DROPPED_TAGS = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, NOSCRIPT: 1, TEMPLATE: 1, SVG: 1, MATH: 1, FORM: 1, INPUT: 1, BUTTON: 1, TEXTAREA: 1, SELECT: 1, LINK: 1, META: 1 };
+
+    function sanitizeHtml(html) {
+      var doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+      function clean(node) {
+        var fragment = document.createDocumentFragment();
+        node.childNodes.forEach(function (child) {
+          if (child.nodeType === 3) {
+            fragment.appendChild(document.createTextNode(child.textContent));
+          } else if (child.nodeType === 1 && !DROPPED_TAGS[child.tagName]) {
+            if (!ALLOWED_TAGS[child.tagName]) {
+              fragment.appendChild(clean(child));
+              return;
+            }
+            var tag = /^H\d$/.test(child.tagName) ? "strong" : child.tagName.toLowerCase();
+            var copy = document.createElement(tag);
+            if (tag === "a" && isHttpUrl(child.getAttribute("href"))) copy.setAttribute("data-url", child.getAttribute("href"));
+            ["colspan", "rowspan"].forEach(function (name) {
+              if (child.hasAttribute(name)) copy.setAttribute(name, String(parseInt(child.getAttribute(name), 10) || 1));
+            });
+            copy.appendChild(clean(child));
+            fragment.appendChild(copy);
+          }
+        });
+        return fragment;
+      }
+      var container = document.createElement("div");
+      container.appendChild(clean(doc.body));
+      return container.innerHTML;
+    }
+
+    function parseResult(result) {
+      var text = result && result.content && result.content.find(function (c) { return c.type === "text"; });
+      if (result && result.isError) throw new Error((text && text.text) || "Otto request failed");
+      if (result && result.structuredContent) return result.structuredContent;
+      try { return JSON.parse(text && text.text); } catch (e) { throw new Error("Unexpected response from the server"); }
+    }
+
+    function create(options) {
+      var state = {
+        conversationId: options.conversationId || null,
+        cursor: 0,
+        order: [],
+        messages: {},
+        waiting: false,
+        typing: false,
+        liveAgent: false,
+        ended: false,
+        sending: false,
+        polling: false,
+        stopped: false,
+        lastContextSeq: 0,
+        unread: 0,
+        visible: false,
+        error: "",
+      };
+      var ticket = options.ticket || null;
+      var nodes = {};
+
+      var root = el("div", "otto-chat");
+      var contextBar = el("div", "otto-context");
+      var log = el("div", "otto-log");
+      log.setAttribute("aria-live", "polite");
+      var composer = el("form", "otto-composer");
+      composer.innerHTML = '<textarea rows="1" placeholder="Message Otto…" aria-label="Message Otto"></textarea><button type="submit" class="otto-send" disabled>Send</button>';
+      var input = composer.querySelector("textarea");
+      var sendButton = composer.querySelector(".otto-send");
+      var footer = el("div", "otto-footer");
+      root.appendChild(contextBar);
+      root.appendChild(log);
+      root.appendChild(composer);
+      root.appendChild(footer);
+
+      function suggestions() {
+        if (ticket) {
+          return ["Summarize " + ticket.number, "What's the next step for " + ticket.number + "?", "Find knowledge articles that could help", "How do I escalate this?"];
+        }
+        return ["What can you help me with?", "Show my open incidents", "I need to reset my password", "Request new hardware"];
+      }
+
+      function renderContext() {
+        contextBar.hidden = !ticket;
+        if (!ticket) return;
+        contextBar.innerHTML = '<span class="otto-context-title">Chatting about <strong>' + escapeHtml(ticket.number) + "</strong>" + (ticket.title ? " · " + escapeHtml(ticket.title) : "") + "</span>" + (options.showOpenTicket && options.onOpenTicket ? '<button type="button" class="otto-link-button otto-open-context">Open ticket</button>' : "");
+      }
+
+      function renderFooter() {
+        var active = state.conversationId && !state.ended;
+        var status = state.liveAgent ? '<span class="otto-status live">Live agent</span>' : state.ended ? '<span class="otto-status">Conversation ended</span>' : '<span class="otto-status">Otto · ServiceNow</span>';
+        footer.innerHTML = (active && !state.liveAgent ? '<button type="button" data-otto-action="agent">Talk to a person</button>' : "") + (active ? '<button type="button" data-otto-action="end">End chat</button>' : "") + (state.conversationId ? '<button type="button" data-otto-action="new">New chat</button>' : "") + status;
+      }
+
+      function bubble(message, inner, extraClass) {
+        var row = el("div", "otto-row " + message.from + (extraClass ? " " + extraClass : ""));
+        if (message.from === "agent") row.appendChild(el("div", "otto-author", escapeHtml(message.author || "Live agent")));
+        if (message.from === "user" && message.context) row.appendChild(el("div", "otto-context-tag", "About " + escapeHtml(message.context)));
+        if (inner != null) row.appendChild(el("div", "otto-bubble", inner));
+        return row;
+      }
+
+      function answered(message) {
+        var index = state.order.indexOf(message.id);
+        return state.order.slice(index + 1).some(function (id) { return state.messages[id].from === "user"; });
+      }
+
+      function renderMessage(message) {
+        var row;
+        switch (message.kind) {
+          case "text":
+            if (message.from === "user") return bubble(message, linkTickets(escapeHtml(message.text)));
+            if (message.streaming && !message.text) {
+              row = el("div", "otto-row otto");
+              row.appendChild(el("div", "otto-typing", '<span class="otto-dots"><i></i><i></i><i></i></span>' + escapeHtml(message.pending || "Otto is thinking…")));
+              return row;
+            }
+            row = bubble(message, markdown(message.text, message.citations));
+            var tail = row.querySelector(".otto-bubble").lastElementChild;
+            if (message.streaming && tail) tail.classList.add("otto-cursor");
+            if (message.citations && message.citations.length) {
+              row.appendChild(el("div", "otto-sources", message.citations.map(function (c, i) {
+                return '<button type="button" class="otto-source" data-url="' + escapeHtml(c.url) + '"><b>' + escapeHtml((c.ref || "[" + (i + 1) + "]").replace(/[\[\]]/g, "")) + "</b>" + escapeHtml(c.label) + "</button>";
+              }).join("")));
+            }
+            return row;
+          case "html":
+            row = bubble(message, sanitizeHtml(message.html));
+            return row;
+          case "image":
+            return bubble(message, isHttpUrl(message.url) ? '<img src="' + escapeHtml(message.url) + '" alt="' + escapeHtml(message.text || "") + '">' : "");
+          case "link":
+            row = bubble(message, null);
+            row.appendChild(el("div", "otto-links", (message.header ? '<div class="otto-links-header">' + escapeHtml(message.header) + "</div>" : "") + '<button type="button" class="otto-link-row" data-url="' + escapeHtml(message.url) + '">' + escapeHtml(message.text || message.url) + " ↗</button>"));
+            return row;
+          case "links":
+            row = bubble(message, null);
+            row.appendChild(el("div", "otto-links", (message.header ? '<div class="otto-links-header">' + escapeHtml(message.header) + "</div>" : "") + (message.links || []).map(function (link) {
+              return '<button type="button" class="otto-link-row" data-url="' + escapeHtml(link.url) + '">' + escapeHtml(link.label) + " ↗" + (link.description ? "<span>" + escapeHtml(link.description) + "</span>" : "") + "</button>";
+            }).join("")));
+            return row;
+          case "card": {
+            var card = message.card || {};
+            var fields = (card.fields || []).map(function (f) { return "<dt>" + escapeHtml(f.label) + "</dt><dd>" + linkTickets(escapeHtml(f.value)) + "</dd>"; }).join("");
+            var actions = (card.sysId && card.table && options.onOpenTicket ? '<button type="button" class="otto-link-button" data-open-table="' + escapeHtml(card.table) + '" data-open-id="' + escapeHtml(card.sysId) + '">Open ticket</button>' : "") + (isHttpUrl(card.url) ? '<a data-url="' + escapeHtml(card.url) + '">Open in ServiceNow ↗</a>' : "");
+            row = bubble(message, null);
+            row.appendChild(el("div", "otto-card", (isHttpUrl(card.image) ? '<img src="' + escapeHtml(card.image) + '" alt="">' : "") + '<div class="otto-card-body">' + (card.title ? '<div class="otto-card-title">' + escapeHtml(card.title) + "</div>" : "") + (card.subtitle ? '<div class="otto-card-subtitle">' + linkTickets(escapeHtml(card.subtitle)) + "</div>" : "") + (card.description ? "<div>" + escapeHtml(card.description) + "</div>" : "") + (fields ? "<dl>" + fields + "</dl>" : "") + (actions ? '<div class="otto-card-actions">' + actions + "</div>" : "") + "</div>"));
+            return row;
+          }
+          case "choice": {
+            var closed = answered(message) || state.ended;
+            row = bubble(message, message.text ? markdown(message.text) : null);
+            var group = el("div", "otto-options");
+            group.innerHTML = (message.options || []).map(function (option) {
+              return '<button type="button" class="otto-option" data-value="' + escapeHtml(option.value) + '" data-label="' + escapeHtml(option.label) + '" title="' + escapeHtml(option.description || "") + '"' + (closed ? " disabled" : "") + ">" + escapeHtml(option.label) + "</button>";
+            }).join("") + (message.multiSelect && !closed ? '<button type="button" class="otto-chip" data-multi-send="1">Send selection</button>' : "");
+            if (message.multiSelect) group.dataset.multi = "1";
+            row.appendChild(group);
+            return row;
+          }
+          case "prompt": {
+            var open = !answered(message) && !state.ended;
+            var inputType = { secret: "password", date: "date", time: "time", datetime: "datetime-local" }[message.input];
+            var extra = open && inputType ? '<form class="otto-inline-input" data-input-kind="' + message.input + '"><input type="' + inputType + '" required aria-label="' + escapeHtml(message.text) + '"><button type="submit" class="otto-send">Send</button></form>' : "";
+            return bubble(message, markdown(message.text) + extra);
+          }
+          case "progress":
+            row = bubble(message, null);
+            var steps = message.steps || [];
+            var done = steps.length && steps.every(function (s) { return /complete|done|success/i.test(s.status); });
+            row.appendChild(el("details", "otto-steps", "<summary>" + escapeHtml(message.header || "AI steps") + (done ? "" : " · working…") + "</summary><ol>" + steps.map(function (s) {
+              return '<li class="' + (/complete|done|success/i.test(s.status) ? "done" : "") + '">' + escapeHtml(s.message) + (/complete|done|success/i.test(s.status) ? " ✓" : "") + "</li>";
+            }).join("") + "</ol>"));
+            if (!done) row.lastChild.open = true;
+            return row;
+          case "notice":
+            row = el("div", "otto-row system");
+            row.appendChild(el("div", "otto-notice" + (message.from === "system" && /couldn't|hasn't|error|failed/i.test(message.text || "") ? " error" : ""), linkTickets(escapeHtml(message.text))));
+            return row;
+          default:
+            return bubble(message, escapeHtml(message.text || ""));
+        }
+      }
+
+      function nearBottom() {
+        return log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+      }
+
+      function renderLog() {
+        var stick = nearBottom() || state.sending;
+        var scrollTop = log.scrollTop;
+        var children = [];
+        if (!state.order.length && !state.pending) {
+          var empty = el("div", "otto-empty", "<h2>Ask Otto</h2><p>" + (ticket ? "Otto answers with " + escapeHtml(ticket.number) + " as context, using your ServiceNow knowledge, catalog, and tickets." : "Otto answers from your ServiceNow knowledge, catalog, and tickets, and can hand you to a live agent.") + "</p>");
+          var chips = el("div", "otto-suggestions");
+          chips.innerHTML = suggestions().map(function (s) { return '<button type="button" class="otto-chip" data-suggestion="' + escapeHtml(s) + '">' + escapeHtml(s) + "</button>"; }).join("");
+          empty.appendChild(chips);
+          children.push(empty);
+        }
+        // Reuse unchanged rows so images, open AI steps, and inline inputs survive updates.
+        state.order.forEach(function (id) {
+          var message = state.messages[id];
+          var interactive = message.kind === "choice" || message.kind === "prompt";
+          var key = message.seq + (interactive ? ":" + (answered(message) || state.ended) : "");
+          if (!nodes[id] || nodes[id].key !== key) nodes[id] = { key: key, node: renderMessage(message) };
+          children.push(nodes[id].node);
+        });
+        if (state.pending) children.push(bubble({ from: "user", context: state.pendingContext }, linkTickets(escapeHtml(state.pending)), "pending"));
+        var streamingVisible = state.order.some(function (id) { var m = state.messages[id]; return m.streaming && !m.text; });
+        if ((state.waiting || state.typing) && !streamingVisible) {
+          var row = el("div", "otto-row " + (state.liveAgent ? "agent" : "otto"));
+          row.appendChild(el("div", "otto-typing", '<span class="otto-dots"><i></i><i></i><i></i></span>' + (state.liveAgent ? "Agent is typing…" : "Otto is thinking…")));
+          children.push(row);
+        }
+        if (state.error) {
+          var errorRow = el("div", "otto-row system");
+          errorRow.appendChild(el("div", "otto-notice error", escapeHtml(state.error)));
+          children.push(errorRow);
+        }
+        log.replaceChildren.apply(log, children);
+        log.scrollTop = stick ? log.scrollHeight : scrollTop;
+        renderFooter();
+        sendButton.disabled = state.sending || !input.value.trim();
+      }
+
+      function apply(update) {
+        if (!update) return;
+        if (update.conversationId) state.conversationId = update.conversationId;
+        var fresh = 0;
+        (update.messages || []).forEach(function (message) {
+          if (!state.messages[message.id]) {
+            state.order.push(message.id);
+            if (message.from !== "user") fresh++;
+          }
+          state.messages[message.id] = message;
+        });
+        state.cursor = Math.max(state.cursor, update.cursor || 0);
+        state.waiting = !!update.waiting;
+        state.typing = !!update.typing;
+        state.liveAgent = !!update.liveAgent;
+        state.ended = !!update.ended;
+        if (fresh && !state.visible) state.unread += fresh;
+        renderLog();
+        shareWithModel();
+        if (options.onChange) options.onChange({ conversationId: state.conversationId, unread: state.unread });
+      }
+
+      function shareWithModel() {
+        if (!options.updateModelContext || state.waiting) return;
+        var replies = state.order.filter(function (id) { var m = state.messages[id]; return m.from !== "user" && !m.streaming && m.seq > state.lastContextSeq; });
+        if (!replies.length) return;
+        state.lastContextSeq = state.cursor;
+        var lines = state.order.slice(-CONTEXT_MESSAGES).map(function (id) {
+          var m = state.messages[id];
+          var who = m.from === "user" ? "User" : m.from === "agent" ? (m.author || "Live agent") : m.from === "system" ? "Note" : "Otto";
+          var body = m.text || m.header || "";
+          if (m.kind === "html") body = new DOMParser().parseFromString(m.html || "", "text/html").body.textContent || "";
+          if (m.kind === "links" || m.kind === "link") body = [m.header, m.text].concat((m.links || []).map(function (l) { return l.label + " (" + l.url + ")"; })).filter(Boolean).join("; ");
+          if (m.kind === "choice") body = (m.text || "Options") + ": " + (m.options || []).map(function (o) { return o.label; }).join(" | ");
+          if (m.kind === "card" && m.card) body = [m.card.title, m.card.subtitle].concat((m.card.fields || []).map(function (f) { return f.label + ": " + f.value; })).filter(Boolean).join("; ");
+          if (m.kind === "progress") return null;
+          return who + ": " + String(body).replace(/\s+/g, " ").trim().slice(0, 1200);
+        }).filter(Boolean);
+        try {
+          options.updateModelContext("The user is chatting with ServiceNow Otto in the app frame" + (ticket ? " about " + ticket.number : "") + ". Latest messages:\n" + lines.join("\n"));
+        } catch (e) { /* hosts without model context updates */ }
+      }
+
+      async function poll() {
+        if (state.polling) return;
+        state.polling = true;
+        var delay = 0;
+        try {
+          while (!state.stopped && state.conversationId && !state.ended) {
+            var id = state.conversationId;
+            try {
+              var update = parseResult(await options.callTool("otto_poll", { conversation_id: id, after: state.cursor, wait_seconds: POLL_SECONDS }));
+              if (id !== state.conversationId) continue;
+              state.error = "";
+              delay = 0;
+              apply(update);
+            } catch (error) {
+              if (id !== state.conversationId) continue;
+              if (/not found/i.test(error.message)) {
+                state.error = "This Otto conversation expired. Start a new chat.";
+                state.ended = true;
+                renderLog();
+                break;
+              }
+              delay = Math.min(delay ? delay * 2 : 2000, 30000);
+              state.error = "Lost the connection to Otto. Retrying…";
+              renderLog();
+              await new Promise(function (resolve) { setTimeout(resolve, delay); });
+            }
+          }
+        } finally {
+          state.polling = false;
+        }
+      }
+
+      async function send(payload) {
+        if (state.sending) return false;
+        state.sending = true;
+        state.error = "";
+        state.pending = payload.action === "END_CONVERSATION" ? null : payload.label || payload.text;
+        state.pendingContext = ticket && !state.order.some(function (id) { return state.messages[id].from === "user"; }) ? ticket.number : null;
+        renderLog();
+        try {
+          var args = Object.assign({ after: state.cursor, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }, payload);
+          if (state.conversationId) args.conversation_id = state.conversationId;
+          if (ticket) args.ticket = { number: ticket.number, table: ticket.table || undefined, sysId: ticket.sysId || undefined, title: ticket.title ? String(ticket.title).slice(0, 500) : undefined };
+          var update = parseResult(await options.callTool("otto_send", args));
+          state.sending = false;
+          state.pending = null;
+          apply(update);
+          poll();
+          return true;
+        } catch (error) {
+          state.sending = false;
+          state.pending = null;
+          state.error = error.message || "Could not reach Otto.";
+          renderLog();
+          return false;
+        }
+      }
+
+      async function sendText(text) {
+        var value = String(text || "").trim();
+        if (!value || state.sending) return;
+        var typed = input.value.trim() === value;
+        if (typed) {
+          input.value = "";
+          resizeInput();
+        }
+        var ok = await send({ text: value });
+        if (!ok && typed && !input.value) {
+          input.value = value;
+          resizeInput();
+        }
+      }
+
+      function resizeInput() {
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 120) + "px";
+        sendButton.disabled = state.sending || !input.value.trim();
+      }
+
+      function reset() {
+        state.conversationId = null;
+        state.cursor = 0;
+        state.order = [];
+        state.messages = {};
+        nodes = {};
+        state.waiting = state.typing = state.liveAgent = state.ended = false;
+        state.error = "";
+        state.lastContextSeq = 0;
+        renderLog();
+        if (options.onChange) options.onChange({ conversationId: null, unread: 0 });
+      }
+
+      composer.addEventListener("submit", function (event) {
+        event.preventDefault();
+        sendText(input.value);
+      });
+      input.addEventListener("input", resizeInput);
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          sendText(input.value);
+        }
+      });
+
+      root.addEventListener("submit", function (event) {
+        var form = event.target.closest(".otto-inline-input");
+        if (!form) return;
+        event.preventDefault();
+        var field = form.querySelector("input");
+        var label = form.dataset.inputKind === "secret" ? "••••••" : field.value;
+        send({ text: field.value, label: label });
+      });
+
+      root.addEventListener("click", function (event) {
+        var target = event.target.closest("button, a");
+        if (!target || !root.contains(target)) return;
+        if (target.dataset.suggestion) return sendText(target.dataset.suggestion);
+        if (target.dataset.ticket && options.onOpenTicket) return options.onOpenTicket({ id: target.dataset.ticket });
+        if (target.dataset.openId && options.onOpenTicket) return options.onOpenTicket({ id: target.dataset.openId, table: target.dataset.openTable });
+        if (target.classList.contains("otto-open-context") && ticket) return options.onOpenTicket({ id: ticket.sysId || ticket.number, table: ticket.table });
+        if (target.dataset.url) {
+          event.preventDefault();
+          return Promise.resolve(options.openLink(target.dataset.url)).catch(function () {
+            state.error = "The host blocked the link: " + target.dataset.url;
+            renderLog();
+          });
+        }
+        if (target.classList.contains("otto-option") && !target.disabled) {
+          var group = target.closest(".otto-options");
+          if (group.dataset.multi) return target.classList.toggle("selected");
+          return send({ text: target.dataset.value, label: target.dataset.label, typed: false });
+        }
+        if (target.dataset.multiSend) {
+          var picked = Array.prototype.slice.call(target.parentElement.querySelectorAll(".otto-option.selected"));
+          if (!picked.length) return;
+          return send({ text: picked.map(function (b) { return b.dataset.value; }).join(","), label: picked.map(function (b) { return b.dataset.label; }).join(", "), typed: false });
+        }
+        var action = target.dataset.ottoAction;
+        if (action === "agent") return send({ text: "Talk to a live agent", action: "AGENT" });
+        if (action === "end") return send({ text: "", action: "END_CONVERSATION" });
+        if (action === "new") {
+          if (state.conversationId && !state.ended) send({ text: "", action: "END_CONVERSATION" }).finally(reset);
+          else reset();
+        }
+      });
+
+      renderContext();
+      renderLog();
+      if (state.conversationId) poll();
+
+      return {
+        root: root,
+        get conversationId() { return state.conversationId; },
+        setVisible: function (visible) {
+          state.visible = visible;
+          if (visible) {
+            state.unread = 0;
+            log.scrollTop = log.scrollHeight;
+            if (options.onChange) options.onChange({ conversationId: state.conversationId, unread: 0 });
+          }
+        },
+        focus: function () { input.focus(); },
+        showError: function (message) { state.error = message; renderLog(); },
+        stop: function () { state.stopped = true; },
+      };
+    }
+
+    window.OttoChat = { create: create };
+  })();
+</script>

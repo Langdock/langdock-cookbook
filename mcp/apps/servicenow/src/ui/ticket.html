@@ -487,7 +487,47 @@
         border: 1px solid #fde68a;
         color: #92400e;
       }
+
+      .ticket-header.with-tabs {
+        margin-bottom: 0;
+        border-bottom: 0;
+        padding-bottom: 10px;
+      }
+      .view-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .view-tabs button {
+        margin-bottom: -1px;
+        padding: 6px 10px;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background: none;
+        color: var(--fg-muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .view-tabs button:hover {
+        color: var(--fg);
+      }
+      .view-tabs button.active {
+        color: var(--fg);
+        border-bottom-color: var(--fg);
+      }
+      .view-tabs .tab-badge {
+        margin-left: 6px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 11px;
+      }
     </style>
+    <!-- otto-chat -->
   </head>
   <body>
     <div class="ticket-container">
@@ -614,6 +654,10 @@
       let ticket = null; // full render data
       let composerKind = "comments";
       const dirty = new Set(); // names of fields the user edited
+      const ottoState = window.OTTO_STATE || {};
+      let activeView = ottoState.view === "otto" ? "otto" : "details";
+      let ottoChat = null;
+      let ottoUnread = 0;
 
       function escapeHtml(str) {
         return String(str)
@@ -843,17 +887,32 @@
              </details>`
           : "";
 
+        const withOtto = ottoEnabled();
+        const backLabel =
+          window.RETURN_LABEL ||
+          (ottoState.returnView === "otto" ? "Otto chat" : "Results");
+
         contentEl.innerHTML = `
-          <div class="ticket-header">
+          <div class="ticket-header${withOtto ? " with-tabs" : ""}">
             <div class="eyebrow">
-              ${window.RETURN_TO_TICKET_LIST ? '<button type="button" class="back-link">← Results</button>' : ""}
+              ${window.RETURN_TO_TICKET_LIST ? `<button type="button" class="back-link">← ${escapeHtml(backLabel)}</button>` : ""}
               ${ticket.number ? `<span class="ticket-number">${escapeHtml(ticket.number)}</span>` : ""}
               ${stateBadge()}
               ${ticket.recordUrl ? `<a class="open-link" href="${escapeHtml(ticket.recordUrl)}" target="_blank" rel="noopener">Open in ServiceNow ↗</a>` : ""}
             </div>
             <h1>${escapeHtml(title)}</h1>
           </div>
+          ${
+            withOtto
+              ? `<div class="view-tabs" role="tablist">
+                   <button type="button" role="tab" data-view="details" class="${activeView === "details" ? "active" : ""}">Details</button>
+                   <button type="button" role="tab" data-view="otto" class="${activeView === "otto" ? "active" : ""}">Ask Otto<span class="tab-badge"${ottoUnread ? "" : " hidden"}>${ottoUnread}</span></button>
+                 </div>
+                 <div id="otto-view"${activeView === "otto" ? "" : " hidden"}></div>`
+              : ""
+          }
 
+          <div id="details-view"${withOtto && activeView === "otto" ? " hidden" : ""}>
           <div id="banner-slot"></div>
 
           <form id="ticket-form">
@@ -888,9 +947,115 @@
               </div>
             </div>
           </div>
+          </div>
         `;
 
         wireEvents();
+        attachOttoChat();
+      }
+
+      // ---- Otto chat ----
+
+      function ottoEnabled() {
+        return Boolean(ticket?.otto?.enabled && window.OttoChat);
+      }
+
+      function utf8ToBase64(value) {
+        const bytes = new TextEncoder().encode(value);
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        return btoa(binary);
+      }
+
+      function scriptJson(value) {
+        return JSON.stringify(value).replace(/</g, "\\u003c");
+      }
+
+      function navigationState(extra) {
+        return {
+          conversationId: ottoChat?.conversationId || ottoState.conversationId || null,
+          ...extra,
+        };
+      }
+
+      function attachOttoChat() {
+        const slot = document.getElementById("otto-view");
+        if (!slot) return;
+        if (!ottoChat) {
+          ottoChat = window.OttoChat.create({
+            callTool: (name, args) => app.callServerTool({ name, arguments: args }),
+            openLink: async (url) => {
+              const result = await app.openLink(url);
+              if (result?.isError) throw new Error("The host denied the link request");
+            },
+            updateModelContext: (text) => {
+              app
+                .request("ui/update-model-context", { content: [{ type: "text", text }] })
+                .catch(() => {});
+            },
+            onOpenTicket: openTicketFromChat,
+            ticket: {
+              number: ticket.number || ticket.sysId,
+              table: ticket.table,
+              sysId: ticket.sysId,
+              title: displayValue({ name: "short_description" }) || ticket.displays?.short_description || "",
+            },
+            conversationId: ottoState.conversationId || ticket.otto?.conversationId,
+            onChange: ({ unread }) => {
+              ottoUnread = unread;
+              const badge = document.querySelector(".view-tabs .tab-badge");
+              if (badge) {
+                badge.textContent = String(unread);
+                badge.hidden = !unread;
+              }
+            },
+          });
+        }
+        slot.appendChild(ottoChat.root);
+        ottoChat.setVisible(activeView === "otto");
+      }
+
+      function showView(view) {
+        activeView = view;
+        document.getElementById("details-view").hidden = view === "otto";
+        document.getElementById("otto-view").hidden = view !== "otto";
+        document.querySelectorAll(".view-tabs [data-view]").forEach((tab) =>
+          tab.classList.toggle("active", tab.dataset.view === view),
+        );
+        ottoChat?.setVisible(view === "otto");
+        if (view === "otto") ottoChat?.focus();
+      }
+
+      async function openTicketFromChat({ id, table }) {
+        if (id === ticket.sysId || id === ticket.number) {
+          showView("details");
+          return;
+        }
+        try {
+          const result = await app.callServerTool({
+            name: "render_ticket",
+            arguments: table ? { table, id } : { id },
+          });
+          const text = result?.content?.find((c) => c.type === "text")?.text;
+          if (result?.isError) throw new Error(text || "Could not load ticket");
+          const html = result?.content?.find(
+            (c) => c.type === "resource" && c.resource?.text,
+          )?.resource?.text;
+          if (!html) throw new Error("The ticket tool did not return a renderable panel");
+          const back = utf8ToBase64(document.documentElement.outerHTML);
+          const state = navigationState({ view: "details", returnView: activeView });
+          const next = html.replace(
+            "</head>",
+            () => `<script>window.RETURN_TO_TICKET_LIST = "${back}"; window.RETURN_LABEL = ${scriptJson(ticket.number || "Back")}; window.OTTO_STATE = ${scriptJson(state)};<\/script></head>`,
+          );
+          document.open();
+          document.write(next);
+          document.close();
+        } catch (error) {
+          ottoChat?.showError(error.message || `Could not open ${id}.`);
+        }
       }
 
       // ---- Interaction ----
@@ -912,10 +1077,21 @@
       function wireEvents() {
         document.querySelector(".back-link")?.addEventListener("click", () => {
           const listHtml = base64ToUtf8(window.RETURN_TO_TICKET_LIST);
+          // Merge so the previous page keeps its own return view.
+          const state = navigationState({ view: ottoState.returnView || "list" });
           document.open();
-          document.write(listHtml);
+          document.write(
+            listHtml.replace(
+              "</head>",
+              () => `<script>window.OTTO_STATE = Object.assign({}, window.OTTO_STATE, ${scriptJson(state)});<\/script></head>`,
+            ),
+          );
           document.close();
         });
+
+        document.querySelectorAll(".view-tabs [data-view]").forEach((tab) =>
+          tab.addEventListener("click", () => showView(tab.dataset.view)),
+        );
 
         document.querySelector(".open-link")?.addEventListener("click", async (event) => {
           event.preventDefault();
@@ -1207,6 +1383,7 @@
           attachments: data.attachments || [],
           recordUrl: data.recordUrl || "",
           accessNotice: data.accessNotice || "",
+          otto: data.otto || null,
         };
         dirty.clear();
         render();

@@ -1067,6 +1067,7 @@ export async function getRecordWithTaskFallback(
 export interface CurrentUser {
   sysId: string;
   userName: string;
+  email: string;
 }
 
 /** Resolve the ServiceNow user an access token belongs to. */
@@ -1076,7 +1077,7 @@ export async function getCurrentUser(
 ): Promise<CurrentUser> {
   const params = new URLSearchParams({
     sysparm_query: "sys_id=javascript:gs.getUserID()",
-    sysparm_fields: "sys_id,user_name",
+    sysparm_fields: "sys_id,user_name,email",
     sysparm_limit: "1",
   });
   const response = await fetch(
@@ -1092,7 +1093,64 @@ export async function getCurrentUser(
   if (!user?.sys_id) {
     throw new Error("Could not resolve the current ServiceNow user");
   }
-  return { sysId: String(user.sys_id), userName: String(user.user_name ?? "") };
+  return {
+    sysId: String(user.sys_id),
+    userName: String(user.user_name ?? ""),
+    email: String(user.email ?? ""),
+  };
+}
+
+export interface VirtualAgentRequest {
+  requestId: string;
+  clientSessionId: string;
+  action?: "AGENT" | "END_CONVERSATION";
+  message: { text: string; typed: boolean; clientMessageId: string };
+  userId: string;
+  emailId?: string;
+  timezone?: string;
+  contextVariables?: Record<string, string>;
+  clientVariables: Record<string, string>;
+}
+
+/**
+ * Send a message to the Virtual Agent bot integration API. With Otto the
+ * reply arrives later on the configured response endpoint; the immediate
+ * response only acknowledges the message unless the instance answers
+ * synchronously, in which case it is the reply itself.
+ */
+export async function sendVirtualAgentMessage(
+  request: VirtualAgentRequest,
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+  messageToken?: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await fetch(
+    `${getInstanceUrl()}/api/sn_va_as_service/bot/integration`,
+    {
+      method: "POST",
+      headers: {
+        ...buildHeaders(accessToken, extraHeaders),
+        ...(messageToken ? { token: messageToken } : {}),
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `ServiceNow Virtual Agent API error (${response.status}): ${errorText}`,
+    );
+  }
+  const data = (await response.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
+  if (data?.status === "failure") {
+    throw new Error(
+      `ServiceNow Virtual Agent rejected the message: ${JSON.stringify(data.error ?? data)}`,
+    );
+  }
+  return data;
 }
 
 /**

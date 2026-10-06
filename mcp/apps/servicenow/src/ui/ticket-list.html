@@ -39,7 +39,15 @@
       .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; }
       .warning { margin: 0 0 16px; padding: 10px 12px; color: #92400e; border: 1px solid #fde68a; border-radius: 8px; background: #fffbeb; }
       .error { color: #b91c1c; margin-top: 10px; }
+      .list-header { display: flex; align-items: flex-start; gap: 12px; }
+      .list-header h1 { flex: 1; }
+      .otto-toggle { padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px; background: #fff; color: var(--fg); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; }
+      .otto-toggle:hover { border-color: #a1a1aa; }
+      .otto-toggle .badge { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 11px; }
+      .back-link { margin: 0 0 10px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
+      .back-link:hover { color: var(--fg); text-decoration: underline; }
     </style>
+    <!-- otto-chat -->
   </head>
   <body>
     <div class="ticket-list-container">
@@ -73,15 +81,42 @@
         return btoa(binary);
       }
 
+      function scriptJson(value) {
+        return JSON.stringify(value).replace(/</g, "\\u003c");
+      }
+
       function mountTicketResource(html) {
         const returnHtml = utf8ToBase64(document.documentElement.outerHTML);
+        const ottoNavigation = {
+          conversationId: ottoChat?.conversationId || ottoState.conversationId || null,
+          view: "details",
+          returnView: view,
+        };
         const withReturnData = html.replace(
           "</head>",
-          `<script>window.RETURN_TO_TICKET_LIST = "${returnHtml}";<\/script></head>`,
+          () => `<script>window.RETURN_TO_TICKET_LIST = "${returnHtml}"; window.OTTO_STATE = ${scriptJson(ottoNavigation)};<\/script></head>`,
         );
         document.open();
         document.write(withReturnData);
         document.close();
+      }
+
+      async function loadTicket(args) {
+        const result = await requestHost("tools/call", {
+          name: "render_ticket",
+          arguments: args,
+        });
+        const errorText = result?.content?.find(
+          (item) => item.type === "text",
+        )?.text;
+        if (result?.isError) throw new Error(errorText || "Could not load ticket");
+        const resource = result?.content?.find(
+          (item) => item.type === "resource" && item.resource?.text,
+        )?.resource;
+        if (!resource?.text) {
+          throw new Error("The ticket tool did not return a renderable panel");
+        }
+        mountTicketResource(resource.text);
       }
 
       async function openTicket(card) {
@@ -90,29 +125,79 @@
         errorEl.textContent = "";
         card.setAttribute("aria-busy", "true");
         try {
-          const result = await requestHost("tools/call", {
-            name: "render_ticket",
-            arguments: {
-              table: card.dataset.table,
-              id: card.dataset.id,
-            },
-          });
-          const errorText = result?.content?.find(
-            (item) => item.type === "text",
-          )?.text;
-          if (result?.isError) throw new Error(errorText || "Could not load ticket");
-          const resource = result?.content?.find(
-            (item) => item.type === "resource" && item.resource?.text,
-          )?.resource;
-          if (!resource?.text) {
-            throw new Error("The ticket tool did not return a renderable panel");
-          }
-          mountTicketResource(resource.text);
+          await loadTicket({ table: card.dataset.table, id: card.dataset.id });
         } catch (error) {
           card.removeAttribute("aria-busy");
           errorEl.textContent = error.message || "Could not load ticket.";
           errorEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
+      }
+
+      async function openTicketFromChat({ id, table }) {
+        try {
+          await loadTicket(table ? { table, id } : { id });
+        } catch (error) {
+          ottoChat?.showError(error.message || `Could not open ${id}.`);
+        }
+      }
+
+      // ---- Otto chat ----
+      const ottoState = window.OTTO_STATE || {};
+      let view = "list";
+      let listData = null;
+      let ottoChat = null;
+      let ottoUnread = 0;
+
+      function ottoEnabled(data) {
+        return Boolean(data?.otto?.enabled && window.OttoChat);
+      }
+
+      function ensureOttoChat(data) {
+        if (ottoChat || !ottoEnabled(data)) return ottoChat;
+        ottoChat = window.OttoChat.create({
+          callTool: (name, args) => requestHost("tools/call", { name, arguments: args }),
+          openLink: openExternal,
+          updateModelContext: (text) => {
+            requestHost("ui/update-model-context", {
+              content: [{ type: "text", text }],
+            }).catch(() => {});
+          },
+          onOpenTicket: openTicketFromChat,
+          showOpenTicket: true,
+          ticket: data.otto.ticket,
+          conversationId: ottoState.conversationId || data.otto.conversationId,
+          onChange: ({ unread }) => {
+            ottoUnread = unread;
+            const badge = document.querySelector(".otto-toggle .badge");
+            if (badge) {
+              badge.textContent = String(unread);
+              badge.hidden = !unread;
+            }
+          },
+        });
+        return ottoChat;
+      }
+
+      function showView(next) {
+        view = next;
+        if (listData) render(listData);
+        if (view === "otto") ottoChat?.focus();
+      }
+
+      function headerHtml(title) {
+        const toggle = ottoEnabled(listData)
+          ? `<button type="button" class="otto-toggle">Ask Otto<span class="badge"${ottoUnread ? "" : " hidden"}>${ottoUnread}</span></button>`
+          : "";
+        return `<div class="list-header"><h1>${escapeHtml(title)}</h1>${toggle}</div>`;
+      }
+
+      function renderOtto(data) {
+        const hasTickets = Boolean(data?.tickets?.length);
+        content.innerHTML = `${hasTickets ? '<button type="button" class="back-link">← Results</button>' : ""}<div id="otto-slot"></div>`;
+        content.querySelector(".back-link")?.addEventListener("click", () => showView("list"));
+        const chat = ensureOttoChat(data);
+        document.getElementById("otto-slot").appendChild(chat.root);
+        chat.setVisible(true);
       }
 
       async function openExternal(url) {
@@ -234,13 +319,20 @@
       }
 
       function render(data) {
+        listData = data;
+        if (view === "otto" && ottoEnabled(data)) {
+          renderOtto(data);
+          return;
+        }
+        ottoChat?.setVisible(false);
         const tickets = data?.tickets || [];
         const title = data?.title || "ServiceNow tickets";
         const warning = data?.warning
           ? `<div class="warning" role="status">${escapeHtml(data.warning)}</div>`
           : "";
         if (!tickets.length) {
-          content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">No tickets matched these filters.</p>${warning}<div class="empty">Try broadening the state, assignment, or date filters.</div>`;
+          content.innerHTML = `${headerHtml(title)}<p class="summary">No tickets matched these filters.</p>${warning}<div class="empty">Try broadening the state, assignment, or date filters.</div>`;
+          content.querySelector(".otto-toggle")?.addEventListener("click", () => showView("otto"));
           return;
         }
         const filters = (data.filterSummary || [])
@@ -259,7 +351,8 @@
               `${label ? `<div class="group">${escapeHtml(label)} · ${groupTickets.length}</div>` : ""}${groupTickets.map(ticketHtml).join("")}`,
           )
           .join("");
-        content.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${warning}<div id="error" class="error" role="alert"></div>${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}`;
+        content.innerHTML = `${headerHtml(title)}<p class="summary">${tickets.length} matching ticket${tickets.length === 1 ? "" : "s"} · Sorted by ${escapeHtml(data.sortLabel || "priority, impact, oldest opened")} — select a card for in-chat details or open it in ServiceNow.</p>${warning}<div id="error" class="error" role="alert"></div>${filters ? `<div class="filters">${filters}</div>` : ""}${groupsHtml}`;
+        content.querySelector(".otto-toggle")?.addEventListener("click", () => showView("otto"));
         content.querySelectorAll(".ticket").forEach((card) => {
           card.addEventListener("click", (event) => {
             if (event.target.closest(".open-label")) return;
@@ -288,7 +381,10 @@
       window.addEventListener("message", (event) => {
         const message = event.data || {};
         const data = message.params?._meta?.["mcpui.dev/ui-initial-render-data"] || message.data || message.renderData;
-        if (data?.tickets) render(data);
+        if (data?.tickets) {
+          if (!listData && data.view === "otto") view = "otto";
+          render(data);
+        }
         if (message.id && pendingRequests.has(message.id)) {
           const request = pendingRequests.get(message.id);
           pendingRequests.delete(message.id);
@@ -300,7 +396,12 @@
         }
       });
       const embedded = dataFromPage();
-      if (embedded) render(embedded);
+      if (embedded) {
+        view = (ottoState.view || embedded.view) === "otto" ? "otto" : "list";
+        // Keep polling a conversation carried back from a ticket so the badge counts replies.
+        if (ottoState.conversationId) ensureOttoChat(embedded);
+        render(embedded);
+      }
       window.parent.postMessage({ type: "appReady", name: "ServiceNow Ticket Discovery" }, "*");
     </script>
   </body>
