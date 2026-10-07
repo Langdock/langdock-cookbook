@@ -380,7 +380,17 @@
 
       window.addEventListener("message", (event) => {
         const message = event.data || {};
-        const data = message.params?._meta?.["mcpui.dev/ui-initial-render-data"] || message.data || message.renderData;
+        if (message.jsonrpc === "2.0" && message.method && message.id != null) {
+          const known = message.method === "ui/resource-teardown" || message.method === "ping";
+          window.parent.postMessage(
+            known
+              ? { jsonrpc: "2.0", id: message.id, result: {} }
+              : { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Method not found" } },
+            "*",
+          );
+          return;
+        }
+        const data = message.params?._meta?.["mcpui.dev/ui-initial-render-data"] || message.params?.structuredContent || message.data || message.renderData;
         if (data?.tickets) {
           if (!listData && data.view === "otto") view = "otto";
           render(data);
@@ -402,7 +412,24 @@
         if (ottoState.conversationId) ensureOttoChat(embedded);
         render(embedded);
       }
-      window.parent.postMessage({ type: "appReady", name: "ServiceNow Ticket Discovery" }, "*");
+      // MCP Apps handshake: hosts deliver tool input and results only after
+      // ui/notifications/initialized.
+      requestHost("ui/initialize", {
+        appInfo: { name: "ServiceNow Ticket Discovery", version: "1.0.0" },
+        appCapabilities: { availableDisplayModes: ["inline", "pip", "fullscreen"] },
+        protocolVersion: "2026-01-26",
+      })
+        .then(() => {
+          window.parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }, "*");
+          const sendSize = () =>
+            window.parent.postMessage(
+              { jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: Math.ceil(document.documentElement.scrollHeight) } },
+              "*",
+            );
+          sendSize();
+          new ResizeObserver(sendSize).observe(document.body);
+        })
+        .catch((error) => console.warn("MCP Apps handshake failed:", error));
     </script>
   </body>
 </html>

@@ -576,6 +576,11 @@
               else this._queuedMessages.push(renderData);
             }
 
+            if (message.jsonrpc === "2.0" && message.method && message.id != null) {
+              this._answerHostRequest(message);
+              return;
+            }
+
             if (
               message.jsonrpc === "2.0" &&
               message.id &&
@@ -592,7 +597,60 @@
               resolve(message.result);
             }
           });
-          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+          this._initialize();
+        }
+
+        // MCP Apps handshake. Hosts deliver tool input and results only after
+        // ui/notifications/initialized, and Langdock routes later tool calls
+        // into an open app only while it is in the side panel (pip). A ticket
+        // opened from the ticket list stays where the list is.
+        async _initialize() {
+          try {
+            const result = await this.request("ui/initialize", {
+              appInfo: { name: this.name, version: this.version },
+              appCapabilities: { availableDisplayModes: ["inline", "pip", "fullscreen"] },
+              protocolVersion: "2026-01-26",
+            });
+            window.parent.postMessage(
+              { jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} },
+              "*",
+            );
+            this._reportSize();
+            const context = result?.hostContext || {};
+            if (
+              !window.RETURN_TO_TICKET_LIST &&
+              context.displayMode !== "pip" &&
+              (context.availableDisplayModes || []).includes("pip")
+            ) {
+              await this.request("ui/request-display-mode", { mode: "pip" });
+            }
+          } catch (e) {
+            console.warn("MCP Apps handshake failed:", e);
+          }
+        }
+
+        _answerHostRequest(message) {
+          const known = message.method === "ui/resource-teardown" || message.method === "ping";
+          window.parent.postMessage(
+            known
+              ? { jsonrpc: "2.0", id: message.id, result: {} }
+              : { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Method not found" } },
+            "*",
+          );
+        }
+
+        _reportSize() {
+          const send = () =>
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                method: "ui/notifications/size-changed",
+                params: { height: Math.ceil(document.documentElement.scrollHeight) },
+              },
+              "*",
+            );
+          send();
+          new ResizeObserver(send).observe(document.body);
         }
 
         processQueue() {
