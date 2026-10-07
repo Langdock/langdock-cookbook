@@ -292,6 +292,125 @@ function createMcpServer(
   const ticketResourceUri = "ui://servicenow/ticket";
   const ticketListResourceUri = "ui://servicenow/ticket-list";
 
+  /** Load everything the ticket panel renders, for render_ticket and for tools that change a ticket. */
+  async function loadTicketRenderData(table: string | undefined, id: string) {
+    let resolvedTable: string;
+    let recordTable: string;
+    let schema: Awaited<ReturnType<typeof getTicketFields>>;
+    let record: Awaited<ReturnType<typeof getRecord>>;
+    let activity: Awaited<ReturnType<typeof getActivity>>;
+    let attachments: Awaited<ReturnType<typeof getAttachments>>;
+    const idIsSysId = /^[0-9a-f]{32}$/i.test(id.trim());
+
+    if (table && idIsSysId) {
+      // Discovery cards already provide the concrete table and sys_id, so
+      // record, activity, and attachment requests can run concurrently.
+      resolvedTable = table;
+      const [recordResult, loadedActivity, loadedAttachments] =
+        await Promise.all([
+          getRecordWithTaskFallback(
+            table,
+            id,
+            token,
+            customHeaders,
+          ),
+          getActivity(table, id, token, customHeaders),
+          getAttachments(table, id, token, customHeaders),
+        ]);
+      record = recordResult.record;
+      recordTable = recordResult.recordTable;
+      activity = loadedActivity;
+      attachments = loadedAttachments;
+      schema = await getTicketFields(
+        recordTable,
+        token,
+        customHeaders,
+      );
+    } else if (table) {
+      resolvedTable = table;
+      const recordResult = await getRecordWithTaskFallback(
+        table,
+        id,
+        token,
+        customHeaders,
+      );
+      record = recordResult.record;
+      recordTable = recordResult.recordTable;
+      [schema, activity, attachments] = await Promise.all([
+        getTicketFields(recordTable, token, customHeaders),
+        getActivity(table, record.sysId, token, customHeaders),
+        getAttachments(table, record.sysId, token, customHeaders),
+      ]);
+    } else {
+      const initialRecord = await getRecord(
+        "task",
+        id,
+        token,
+        customHeaders,
+      );
+      resolvedTable =
+        initialRecord.values.sys_class_name?.value || "task";
+      const recordResult =
+        resolvedTable === "task"
+          ? { record: initialRecord, recordTable: "task" }
+          : await getRecordWithTaskFallback(
+              resolvedTable,
+              initialRecord.sysId,
+              token,
+              customHeaders,
+            );
+      record = recordResult.record;
+      recordTable = recordResult.recordTable;
+      [schema, activity, attachments] = await Promise.all([
+        getTicketFields(recordTable, token, customHeaders),
+        getActivity(
+          resolvedTable,
+          record.sysId,
+          token,
+          customHeaders,
+        ),
+        getAttachments(
+          resolvedTable,
+          record.sysId,
+          token,
+          customHeaders,
+        ),
+      ]);
+    }
+
+    // Flatten record values for form seeding (raw values + display labels).
+    const values: Record<string, string> = {};
+    const displays: Record<string, string> = {};
+    for (const [name, v] of Object.entries(record.values)) {
+      values[name] = v.value;
+      displays[name] = v.display;
+    }
+
+    const recordUrl = `${getInstanceUrl()}/nav_to.do?uri=${encodeURIComponent(
+      `${resolvedTable}.do?sys_id=${record.sysId}`,
+    )}`;
+
+    const renderData = {
+      table: resolvedTable,
+      recordTable,
+      sysId: record.sysId,
+      number: record.number ?? "",
+      isTaskTable: schema.isTaskTable ?? false,
+      fields: schema.fields,
+      values,
+      displays,
+      activity,
+      attachments,
+      recordUrl,
+      accessNotice:
+        recordTable !== resolvedTable
+          ? `This ticket is opened through the parent task API because ServiceNow denied direct API access to ${resolvedTable}. Only inherited task fields are editable.`
+          : undefined,
+      otto: { enabled: isOttoEnabled() },
+    };
+    return renderData;
+  }
+
   // Register form UI resource
   registerAppResource(
     server,
@@ -785,12 +904,25 @@ function createMcpServer(
     },
   );
 
+  // Ticket changes are routed into an open ticket panel; a failed reload must
+  // not turn a successful write into an error.
+  async function ticketPanelMeta(table: string, sysId: string) {
+    try {
+      const renderData = await loadTicketRenderData(table, sysId);
+      return { "mcpui.dev/ui-initial-render-data": renderData };
+    } catch {
+      return undefined;
+    }
+  }
+
   // Tool: Update fields on an existing record
-  server.registerTool(
+  registerAppTool(
+    server,
     "update_record",
     {
       title: "Update Record",
-      description: "Update field values on an existing ServiceNow record.",
+      description:
+        "Update field values on an existing ServiceNow record. An open ticket panel for the record shows the new values.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         sys_id: z.string().describe("The sys_id of the record to update"),
@@ -798,6 +930,7 @@ function createMcpServer(
           .record(z.string(), z.unknown())
           .describe("The field values to update"),
       },
+      _meta: { ui: { resourceUri: ticketResourceUri } },
     },
     async ({ table, sys_id, data }) => {
       try {
@@ -812,6 +945,7 @@ function createMcpServer(
           content: [
             { type: "text" as const, text: JSON.stringify(record, null, 2) },
           ],
+          _meta: await ticketPanelMeta(table, sys_id),
         };
       } catch (error) {
         return {
@@ -823,12 +957,13 @@ function createMcpServer(
   );
 
   // Tool: Append a comment or work note, and return the refreshed activity
-  server.registerTool(
+  registerAppTool(
+    server,
     "add_journal_entry",
     {
       title: "Add Journal Entry",
       description:
-        "Append a comment (customer-visible) or work note (internal) to a record's activity stream.",
+        "Append a comment (customer-visible) or work note (internal) to a record's activity stream. An open ticket panel for the record shows the new entry.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         activity_table: z
@@ -843,6 +978,7 @@ function createMcpServer(
           .describe("Which journal field to append to"),
         text: z.string().describe("The comment or work note text"),
       },
+      _meta: { ui: { resourceUri: ticketResourceUri } },
     },
     async ({ table, activity_table, sys_id, field, text }) => {
       try {
@@ -853,16 +989,20 @@ function createMcpServer(
           token,
           customHeaders,
         );
-        const activity = await getActivity(
-          activity_table || table,
-          sys_id,
-          token,
-          customHeaders,
-        );
+        const meta = await ticketPanelMeta(activity_table || table, sys_id);
+        const activity =
+          meta?.["mcpui.dev/ui-initial-render-data"].activity ??
+          (await getActivity(
+            activity_table || table,
+            sys_id,
+            token,
+            customHeaders,
+          ));
         return {
           content: [
             { type: "text" as const, text: JSON.stringify({ activity }, null, 2) },
           ],
+          _meta: meta,
         };
       } catch (error) {
         return {
@@ -1010,120 +1150,7 @@ function createMcpServer(
     },
     async ({ table, id }) => {
       try {
-        let resolvedTable: string;
-        let recordTable: string;
-        let schema: Awaited<ReturnType<typeof getTicketFields>>;
-        let record: Awaited<ReturnType<typeof getRecord>>;
-        let activity: Awaited<ReturnType<typeof getActivity>>;
-        let attachments: Awaited<ReturnType<typeof getAttachments>>;
-        const idIsSysId = /^[0-9a-f]{32}$/i.test(id.trim());
-
-        if (table && idIsSysId) {
-          // Discovery cards already provide the concrete table and sys_id, so
-          // record, activity, and attachment requests can run concurrently.
-          resolvedTable = table;
-          const [recordResult, loadedActivity, loadedAttachments] =
-            await Promise.all([
-              getRecordWithTaskFallback(
-                table,
-                id,
-                token,
-                customHeaders,
-              ),
-              getActivity(table, id, token, customHeaders),
-              getAttachments(table, id, token, customHeaders),
-            ]);
-          record = recordResult.record;
-          recordTable = recordResult.recordTable;
-          activity = loadedActivity;
-          attachments = loadedAttachments;
-          schema = await getTicketFields(
-            recordTable,
-            token,
-            customHeaders,
-          );
-        } else if (table) {
-          resolvedTable = table;
-          const recordResult = await getRecordWithTaskFallback(
-            table,
-            id,
-            token,
-            customHeaders,
-          );
-          record = recordResult.record;
-          recordTable = recordResult.recordTable;
-          [schema, activity, attachments] = await Promise.all([
-            getTicketFields(recordTable, token, customHeaders),
-            getActivity(table, record.sysId, token, customHeaders),
-            getAttachments(table, record.sysId, token, customHeaders),
-          ]);
-        } else {
-          const initialRecord = await getRecord(
-            "task",
-            id,
-            token,
-            customHeaders,
-          );
-          resolvedTable =
-            initialRecord.values.sys_class_name?.value || "task";
-          const recordResult =
-            resolvedTable === "task"
-              ? { record: initialRecord, recordTable: "task" }
-              : await getRecordWithTaskFallback(
-                  resolvedTable,
-                  initialRecord.sysId,
-                  token,
-                  customHeaders,
-                );
-          record = recordResult.record;
-          recordTable = recordResult.recordTable;
-          [schema, activity, attachments] = await Promise.all([
-            getTicketFields(recordTable, token, customHeaders),
-            getActivity(
-              resolvedTable,
-              record.sysId,
-              token,
-              customHeaders,
-            ),
-            getAttachments(
-              resolvedTable,
-              record.sysId,
-              token,
-              customHeaders,
-            ),
-          ]);
-        }
-
-        // Flatten record values for form seeding (raw values + display labels).
-        const values: Record<string, string> = {};
-        const displays: Record<string, string> = {};
-        for (const [name, v] of Object.entries(record.values)) {
-          values[name] = v.value;
-          displays[name] = v.display;
-        }
-
-        const recordUrl = `${getInstanceUrl()}/nav_to.do?uri=${encodeURIComponent(
-          `${resolvedTable}.do?sys_id=${record.sysId}`,
-        )}`;
-
-        const renderData = {
-          table: resolvedTable,
-          recordTable,
-          sysId: record.sysId,
-          number: record.number ?? "",
-          isTaskTable: schema.isTaskTable ?? false,
-          fields: schema.fields,
-          values,
-          displays,
-          activity,
-          attachments,
-          recordUrl,
-          accessNotice:
-            recordTable !== resolvedTable
-              ? `This ticket is opened through the parent task API because ServiceNow denied direct API access to ${resolvedTable}. Only inherited task fields are editable.`
-              : undefined,
-          otto: { enabled: isOttoEnabled() },
-        };
+        const renderData = await loadTicketRenderData(table, id);
 
         let html = await getTicketHtml();
         html = html.replace(
@@ -1135,7 +1162,7 @@ function createMcpServer(
           content: [
             {
               type: "text",
-              text: `Opened ${record.number || record.sysId} from ${resolvedTable}.`,
+              text: `Opened ${renderData.number || renderData.sysId} from ${renderData.table}.`,
             },
             {
               type: "resource",
@@ -1146,6 +1173,7 @@ function createMcpServer(
               },
             },
           ],
+          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
         };
       } catch (error) {
         return {

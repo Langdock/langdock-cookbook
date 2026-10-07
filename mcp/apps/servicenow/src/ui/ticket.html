@@ -553,12 +553,11 @@
             const message = event.data;
             let renderData = null;
 
-            if (
-              message.method === "ui/notifications/tool-result" &&
-              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
-            ) {
+            if (message.method === "ui/notifications/tool-result") {
               renderData =
-                message.params._meta["mcpui.dev/ui-initial-render-data"];
+                message.params?._meta?.["mcpui.dev/ui-initial-render-data"] ||
+                message.params?.structuredContent ||
+                null;
             } else if (message.type === "renderData" && message.data) {
               renderData = message.data;
             } else if (
