@@ -149,6 +149,21 @@ Display an interactive form to create a ServiceNow record. Fetches the table's f
 }
 ```
 
+### `update_form`
+
+Update fields in a form that `render_form` already rendered, without opening a new iframe.
+
+**Parameters:** `table` (required), `prefill` (required) — key-value pairs to update in the existing form.
+
+```json
+{
+  "table": "incident",
+  "prefill": {
+    "urgency": "1"
+  }
+}
+```
+
 ### `submit_form`
 
 Submit a record to a ServiceNow table via the Table API.

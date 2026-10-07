@@ -286,13 +286,13 @@
             // Try to extract render data from various message formats
             let renderData = null;
 
-            // Format 1: JSON-RPC from mcpJam - { method: "ui/notifications/tool-result", params: { _meta: {...} } }
+            // Format 1: MCP Apps tool result notification
             if (
-              message.method === "ui/notifications/tool-result" &&
-              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
+              message.method === "ui/notifications/tool-result"
             ) {
               renderData =
-                message.params._meta["mcpui.dev/ui-initial-render-data"];
+                message.params?.structuredContent ||
+                message.params?._meta?.["mcpui.dev/ui-initial-render-data"];
             }
             // Format 2: { type: "renderData", data: {...} }
             else if (message.type === "renderData" && message.data) {
@@ -426,10 +426,7 @@
       // Check for embedded schema (self-contained mode)
       const embeddedSchema = getEmbeddedSchema();
       if (embeddedSchema) {
-        currentTable = embeddedSchema.table;
-        formFields = embeddedSchema.fields;
-        prefillData = embeddedSchema.prefill || {};
-        renderForm(embeddedSchema);
+        displayForm(embeddedSchema);
       }
 
       // Connect to host EARLY to start receiving messages
@@ -440,10 +437,13 @@
       app.onrenderdata = (data) => {
         try {
           if (data.table && data.fields) {
-            currentTable = data.table;
-            formFields = data.fields;
-            prefillData = data.prefill || {};
-            renderForm(data);
+            displayForm(data);
+          } else if (
+            data.table === currentTable &&
+            data.prefill &&
+            typeof data.prefill === "object"
+          ) {
+            updateExistingForm(data.prefill);
           }
         } catch (e) {
           console.error("Error processing render data:", e);
@@ -459,9 +459,15 @@
           if (textContent) {
             const data = parseToolTextPayload(textContent);
             if (data && typeof data === "object" && data.table && data.fields) {
-              currentTable = data.table;
-              formFields = data.fields;
-              renderForm(data);
+              displayForm(data);
+            } else if (
+              data &&
+              typeof data === "object" &&
+              data.table === currentTable &&
+              data.prefill &&
+              typeof data.prefill === "object"
+            ) {
+              updateExistingForm(data.prefill);
             } else if (data && typeof data === "object" && data.sys_id) {
               // Successful submission
               renderSuccess(data);
@@ -479,6 +485,63 @@
 
       function toTitleCase(str) {
         return str.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      function getSchemaSignature(fields) {
+        return JSON.stringify(
+          fields.map((field) => ({
+            name: field.name,
+            inputType: field.inputType,
+            readOnly: field.readOnly,
+            required: field.required,
+            choices: field.choices,
+          })),
+        );
+      }
+
+      function displayForm(schema) {
+        const form = document.getElementById("servicenow-form");
+        const canUpdateExistingForm =
+          form &&
+          currentTable === schema.table &&
+          getSchemaSignature(formFields) === getSchemaSignature(schema.fields);
+
+        currentTable = schema.table;
+        formFields = schema.fields;
+        prefillData = schema.prefill || {};
+
+        if (canUpdateExistingForm) {
+          updateExistingForm(prefillData);
+        } else {
+          renderForm(schema);
+        }
+      }
+
+      function updateExistingForm(prefill) {
+        const form = document.getElementById("servicenow-form");
+        if (!form) return;
+
+        for (const [name, value] of Object.entries(prefill)) {
+          const control = form.elements.namedItem(name);
+          if (!control) continue;
+
+          if (control instanceof HTMLInputElement && control.type === "checkbox") {
+            const checked = value === true || value === "true";
+            control.checked = checked;
+            control.defaultChecked = checked;
+          } else if (
+            control instanceof HTMLInputElement ||
+            control instanceof HTMLTextAreaElement
+          ) {
+            control.value = value == null ? "" : String(value);
+            control.defaultValue = control.value;
+          } else if (control instanceof HTMLSelectElement) {
+            control.value = value == null ? "" : String(value);
+            for (const option of control.options) {
+              option.defaultSelected = option.selected;
+            }
+          }
+        }
       }
 
       function renderForm(schema) {

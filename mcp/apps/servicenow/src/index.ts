@@ -827,7 +827,7 @@ function createMcpServer(
     {
       title: "Render Form",
       description:
-        "Display an interactive form to create a ServiceNow record. Optionally call get_form_fields first to see available fields.",
+        "Render a new interactive form to create a ServiceNow record. Use update_form for later field changes so the existing form is reused.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         prefill: z
@@ -862,7 +862,42 @@ function createMcpServer(
               },
             },
           ],
+          structuredContent: renderData,
           _meta: { "mcpui.dev/ui-initial-render-data": renderData },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Update values in the currently rendered form
+  registerAppTool(
+    server,
+    "update_form",
+    {
+      title: "Update Form",
+      description:
+        "Update fields in an existing ServiceNow form without rendering a new form. Call render_form first.",
+      inputSchema: {
+        table: z.string().describe("The ServiceNow table name"),
+        prefill: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .describe("Key-value pairs to update in the existing form"),
+      },
+      _meta: { ui: { resourceUri: formResourceUri } },
+    },
+    async ({ table, prefill }) => {
+      try {
+        const schema = await getFormFields(table, token, customHeaders);
+        const updateData = { ...schema, prefill };
+        return {
+          content: [{ type: "text", text: JSON.stringify(updateData) }],
+          structuredContent: updateData,
+          _meta: { "mcpui.dev/ui-initial-render-data": updateData },
         };
       } catch (error) {
         return {
