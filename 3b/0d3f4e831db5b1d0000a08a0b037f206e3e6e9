@@ -1,0 +1,23 @@
+mcp/apps/servicenow/src/index.ts
+  s_1b322228885fd6::t_8162ee05d71a24 830,865,877-900
+mcp/apps/servicenow/src/ui/form.html
+  s_1b322228885fd6::t_8162ee05d71a24 289,291,294-295,429,440-446,462-470,490-544
+mcp/apps/servicenow/README.md
+  ai_agent 152-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3b0d3f4e831db5b1d0000a08a0b037f206e3e6e9",
+  "prompts": {},
+  "sessions": {
+    "s_1b322228885fd6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4f57506f-53d1-489b-8dc0-0a6ff5ae5139",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
