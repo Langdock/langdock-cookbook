@@ -1,0 +1,22 @@
+mcp/apps/google-maps/src/ui/map.html
+  s_96648a3efc17ba::t_ff3b4cd0f82114 344-386,397-399
+  s_96648a3efc17ba::t_b3f170ffb2b8a5 288-292
+mcp/apps/google-maps/README.md
+  s_96648a3efc17ba::t_e8acea59562afd 151-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "361a5da3689e3b207a71e68653be1dafcce26886",
+  "prompts": {},
+  "sessions": {
+    "s_96648a3efc17ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f5e01313-d08e-4782-a3e2-3bc4b2d2d55b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
