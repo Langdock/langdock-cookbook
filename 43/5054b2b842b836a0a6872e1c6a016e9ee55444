@@ -1,0 +1,28 @@
+mcp/apps/servicenow/src/ui/form.html
+  s_96648a3efc17ba::t_a5e01f398b756d 441-443
+  s_96648a3efc17ba::t_a835a11f8b91d6 598-653,660-661
+  s_96648a3efc17ba::t_bdf7baae04e34d 654-659
+  s_96648a3efc17ba::t_b00e26a76da0df 690-707
+  s_96648a3efc17ba::t_149e36ce9a89b6 357
+  s_96648a3efc17ba::t_a5b8df2467bcf7 770
+  s_96648a3efc17ba::t_62b70f59aab4a6 782
+  s_96648a3efc17ba::t_0c514bd24ecae5 838-841
+mcp/apps/servicenow/README.md
+  s_96648a3efc17ba::t_6f186299e07a64 461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "435054b2b842b836a0a6872e1c6a016e9ee55444",
+  "prompts": {},
+  "sessions": {
+    "s_96648a3efc17ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f5e01313-d08e-4782-a3e2-3bc4b2d2d55b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
