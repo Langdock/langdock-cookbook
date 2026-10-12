@@ -1,0 +1,19 @@
+mcp/apps/servicenow/README.md
+  s_96648a3efc17ba::t_c1156bc9a53821 437-485
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b0963728f45c3123d78507ea5b422148d7332134",
+  "prompts": {},
+  "sessions": {
+    "s_96648a3efc17ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f5e01313-d08e-4782-a3e2-3bc4b2d2d55b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
