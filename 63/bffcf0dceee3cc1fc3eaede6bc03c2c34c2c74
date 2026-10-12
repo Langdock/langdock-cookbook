@@ -1,0 +1,23 @@
+mcp/apps/drawio/README.md
+  s_96648a3efc17ba::t_60be7403fd875b 72-73
+mcp/apps/drawio/src/ui/editor.html
+  s_96648a3efc17ba::t_3ea11e6a35bc48 702,704
+  s_96648a3efc17ba::t_ed0dea9029587a 241,248-262
+  s_96648a3efc17ba::t_6659db01185a76 293-335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "63bffcf0dceee3cc1fc3eaede6bc03c2c34c2c74",
+  "prompts": {},
+  "sessions": {
+    "s_96648a3efc17ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f5e01313-d08e-4782-a3e2-3bc4b2d2d55b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
