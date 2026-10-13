@@ -7,6 +7,7 @@ It can:
 - Inspect a ServiceNow table's fields and render an editable **creation form** right inside the client (optionally pre-filled from the conversation), then submit it as a new record.
 - **Discover tickets** across task-derived records using user-facing filters such as state, severity, impact, assignment, and date ranges — without asking the user to identify a ServiceNow table — then open any result in the interactive ticket panel.
 - **Open an existing record** (e.g. an incident) as an interactive **ticket panel** inside the client, where users can edit fields, change state, upload/download/delete attachments, and add comments or work notes — each change saved straight back to ServiceNow without leaving the chat.
+- **Chat with ServiceNow Otto in the same frame.** The ticket list and the ticket panel both have an *Ask Otto* view that talks to Otto (Virtual Agent with Now Assist) as the signed-in user. Ticket numbers in Otto's answers open in the same frame, and the conversation carries over as you move between results, tickets, and chat. See [Otto chat](#otto-chat).
 
 The server acts as an OAuth 2.0 proxy with Dynamic Client Registration (DCR): MCP clients authenticate through this server, which delegates user sign-in to your ServiceNow instance and forwards the ServiceNow access token on every API call.
 
@@ -78,6 +79,9 @@ export BASE_URL="http://localhost:3000"          # public URL; must match the OA
 # export SERVICENOW_LANGUAGE="en"
 # Optional — maximum records inspected for cross-table choice filters:
 # export SERVICENOW_DISCOVERY_SCAN_LIMIT="5000"
+# Optional — turns on the Otto chat (see "Otto chat" below):
+# export SERVICENOW_VA_CALLBACK_SECRET="long-random-string"
+# export SERVICENOW_VA_TOKEN="static-message-auth-token"
 # Optional — only for confidential OAuth clients:
 # export SERVICENOW_CLIENT_SECRET="your-client-secret"
 ```
@@ -100,6 +104,8 @@ The server starts on port `3000` and exposes the MCP endpoint at `/mcp`.
 | `SERVICENOW_CLIENT_SECRET` | No | OAuth client secret — set only for confidential clients |
 | `SERVICENOW_LANGUAGE` | No | Language used for form choice options (default: `en`) |
 | `SERVICENOW_DISCOVERY_SCAN_LIMIT` | No | Maximum candidate records inspected for cross-table choice filters (default: `5000`) |
+| `SERVICENOW_VA_CALLBACK_SECRET` | No | Turns on the Otto chat. ServiceNow must send it on every reply to `/servicenow/va/callback`, as an `x-otto-callback-secret` header or a Bearer token |
+| `SERVICENOW_VA_TOKEN` | No | Static Message Authentication token for the Virtual Agent API, sent as the `token` header. Without it, Virtual Agent treats every user as a guest |
 | `PORT` | No | Port to listen on (default: `3000`) |
 
 ## Endpoints
@@ -112,6 +118,7 @@ The server starts on port `3000` and exposes the MCP endpoint at `/mcp`.
 | `/token` | Token endpoint |
 | `/oauth/callback` | ServiceNow OAuth callback |
 | `/mcp` | MCP endpoint (GET, POST, DELETE) — requires a Bearer token |
+| `/servicenow/va/callback` | Virtual Agent API response endpoint for Otto replies (only when `SERVICENOW_VA_CALLBACK_SECRET` is set) |
 | `/health` | Health check |
 
 ## MCP Tools
@@ -134,6 +141,21 @@ Display an interactive form to create a ServiceNow record. Fetches the table's f
   "prefill": {
     "short_description": "Laptop won't turn on",
     "urgency": "2"
+  }
+}
+```
+
+### `update_form`
+
+Update fields in a form that `render_form` already rendered, without opening a new iframe.
+
+**Parameters:** `table` (required), `prefill` (required) — key-value pairs to update in the existing form.
+
+```json
+{
+  "table": "incident",
+  "prefill": {
+    "urgency": "1"
   }
 }
 ```
@@ -230,6 +252,162 @@ Append a **comment** (customer-visible) or **work note** (internal) to a record'
 
 **Parameters:** `table` (required), `sys_id` (required), `field` (`comments` | `work_notes`), `text` (required).
 
+`update_record` and `add_journal_entry` declare the ticket panel as their UI and return the reloaded ticket, so a change the assistant makes always shows up in a ticket panel: the one already open in the side panel, or a new one. Each call therefore loads the ticket again (record, fields, activity, and attachments) after the write.
+
+### `open_otto_chat`
+
+Open the Otto chat in the ServiceNow frame, for requests like “ask Otto how
+to get VPN access” or “ask Otto about INC0010023”. With `message`, the
+question goes to Otto right away and the frame opens on the running
+conversation. With `ticket`, Otto gets that ticket as context.
+
+**Parameters:** `message` (optional) — the user's first question; `ticket`
+(optional) — a number or `sys_id`; `table` (optional) — detected when
+omitted.
+
+```json
+{
+  "ticket": "INC0010023",
+  "message": "Is there a known fix for this?"
+}
+```
+
+The chat itself runs on two app-only helpers that the model never sees:
+`otto_send` posts a message as the signed-in user, and `otto_poll`
+long-polls for Otto's replies.
+
+## Otto chat
+
+Otto lives inside the frames the app already renders. There is no separate
+chat resource:
+
+- The **ticket list** has an *Ask Otto* button that swaps the results for the
+  chat, with *← Results* to go back.
+- The **ticket panel** has *Details* and *Ask Otto* tabs. Otto gets the open
+  ticket as context: the first message about a ticket starts with
+  “I have a question about INC0010023 ("…")”, and the ticket number, table,
+  and `sys_id` are sent as `contextVariables` for topics that want them.
+- **Ticket numbers** and record cards in Otto's answers open the ticket in the
+  same frame. Its back link returns to the chat, and the conversation follows
+  along: the frame passes the conversation ID with each in-frame navigation,
+  and the transcript is kept on the server, so every view rebuilds it.
+
+Otto talks to the
+[Virtual Agent API](https://github.com/ServiceNow/ServiceNowDocs/blob/australia/markdown/api-reference/rest-apis/bot-api.md)
+(`sn_va_as_service`), which only supports Otto in asynchronous mode. Replies
+arrive on a callback, not in the HTTP response:
+
+```
+Frame                      This Server                       ServiceNow
+  │                             │                                 │
+  ├─ otto_send ───────────────► ├─ POST /api/sn_va_as_service/ ──► │
+  │  ◄── your message ──────────┤  bot/integration (as the user)  │
+  │                             │                                 │
+  ├─ otto_poll (long poll) ───► │  ◄── POST /servicenow/va/ ───────┤
+  │  ◄── AI steps, stream, ─────┤      callback (progress,        │
+  │      answer, options        │      stream chunks, answer)     │
+```
+
+What the frame renders: text with citations as source chips, streamed
+answers, the "View AI Steps" progress list, option pickers as buttons, links,
+record cards, sanitized HTML tables, date/time and masked inputs, and
+live-agent handoff with the agent's name. *Talk to a person* switches to a
+live agent, and *End chat* ends the conversation. After each reply, the frame
+sends the latest messages to the host with `ui/update-model-context`. Hosts
+that support it can then answer “what did Otto say?” in the main chat.
+
+Identity and security:
+
+- **Otto acts as the signed-in user.** `userId` and `emailId` come from the
+  `sys_user` record behind the caller's own OAuth token, never from tool
+  input. Virtual Agent links the conversation to that ServiceNow account by
+  email.
+- **Conversations are private.** A conversation belongs to the ServiceNow user
+  who started it. Other users get “not found”, and a refreshed token for the
+  same user keeps access.
+- **Callbacks are authenticated.** `/servicenow/va/callback` rejects any
+  request without `SERVICENOW_VA_CALLBACK_SECRET`, and only applies a reply to
+  the conversation whose user matches the reply's `userId`.
+- **Untrusted content stays inert.** HTML replies go through an allowlist
+  sanitizer, and links only open through the host as `http(s)` URLs.
+
+### ServiceNow setup
+
+Admins configure this once per instance:
+
+1. Install the **Virtual Agent API** (`sn_va_as_service`, v4.1 or later for
+   Otto streaming and AI steps).
+2. **Inbound authentication.** Under *Scripted REST APIs → VA Bot Integration
+   → BOT Integration*, require authentication. Then set up
+   [Message Authentication](https://github.com/ServiceNow/ServiceNowDocs/blob/australia/markdown/conversational-interfaces/virtual-agent/set-up-message-auth-va-api.md)
+   with a **Static token** and put that token in `SERVICENOW_VA_TOKEN`.
+   OAuth alone makes every conversation a guest conversation. The server sends
+   the static token and the user's own bearer token on every call.
+3. **Response endpoint.** In
+   [Bot to Bot Outbound Configurations → VA Bot to Bot Provider Application → Rest connection → Bot Connection](https://github.com/ServiceNow/ServiceNowDocs/blob/australia/markdown/conversational-interfaces/virtual-agent/configure-response-endpoint-auth-va-api.md),
+   set the Connection URL to `<BASE_URL>/servicenow/va/callback`. Under
+   *Attributes*, add the header `x-otto-callback-secret` with the value of
+   `SERVICENOW_VA_CALLBACK_SECRET`.
+4. **Otto.** Follow
+   [Enable ServiceNow Otto experience in Virtual Agent API](https://github.com/ServiceNow/ServiceNowDocs/blob/australia/markdown/conversational-interfaces/virtual-agent/enable-now-assist-in-virtual-agent-experience-in-virtual-agent-api.md)
+   to link the VA Bot to Bot provider channel to *ServiceNow Otto for Virtual
+   Agent*. For streamed answers, also turn on *Allow response streaming* and
+   set *Streaming Ready* for the Bot to Bot device in
+   `sys_now_assist_channel_config`.
+
+If a reply never arrives, the frame shows a notice after 90 seconds. Check
+the response endpoint first: ServiceNow has to reach `BASE_URL` over HTTPS.
+ServiceNow closes Bot to Bot conversations after an hour without activity,
+and typing again simply starts a new one in the same thread.
+
+## Talking to Langdock
+
+The frames speak the [MCP Apps](https://github.com/modelcontextprotocol/ext-apps)
+JSON-RPC protocol over `postMessage`, the same protocol Langdock's host
+implements with `@modelcontextprotocol/ext-apps`. Each frame does the
+handshake itself, without the SDK:
+
+1. Send `ui/initialize` with `appInfo`, `appCapabilities.availableDisplayModes`
+   (`inline`, `pip`, `fullscreen`), and protocol version `2026-01-26`.
+2. Send `ui/notifications/initialized`. Langdock sends the tool input and
+   result only after this notification. A frame that skips the handshake
+   stays empty.
+3. Report its height with `ui/notifications/size-changed` whenever the body
+   resizes.
+4. Answer `ping` and `ui/resource-teardown` from the host. Any other host
+   request gets a `Method not found` error.
+
+After the handshake, the frames use these host methods:
+
+| Method | Used for |
+|---|---|
+| `tools/call` | Saving fields, posting comments, attachments, Otto messages, and opening a ticket from the list |
+| `ui/request-display-mode` | Moving the form and ticket panel to the side panel (`pip`) |
+| `ui/open-link` | Opening a record or attachment in ServiceNow |
+| `ui/update-model-context` | Passing the form's current values and the fields the user changed, and the latest Otto messages, to the next chat turn |
+| `ui/notifications/tool-result` (from the host) | Rendering the result of the tool call that opened the frame, or a later one |
+
+### Updating an open frame
+
+When the model calls a tool again, Langdock sends the result to the frame that
+is already open in the side panel, so the user keeps working in one place.
+The recipe sets this up in two ways:
+
+- The form and the ticket panel ask for the **side panel** (`pip`) right after
+  the handshake. A ticket opened from the ticket list stays where the list is.
+- The follow-up tools declare the **same `_meta.ui.resourceUri`** as the frame
+  they update. `update_form` uses the form's URI, and `update_record` and
+  `add_journal_entry` use the ticket panel's URI.
+
+The frame keeps its state and re-renders from the new result. The tools put
+their render data in `structuredContent` or in the result's
+`_meta["mcpui.dev/ui-initial-render-data"]`, and the frames read both:
+
+- `update_form` returns only `table` and `prefill`. The form fills those fields
+  in place and keeps everything else the user typed.
+- `update_record` and `add_journal_entry` return the reloaded ticket, and the
+  panel re-renders it.
+
 ## Resources
 
 ### `ui://servicenow/form`
@@ -238,11 +416,11 @@ The interactive creation form rendered by the `render_form` tool, served as an M
 
 ### `ui://servicenow/ticket`
 
-The interactive ticket panel rendered by the `render_ticket` tool, served as an MCP App resource.
+The interactive ticket panel rendered by the `render_ticket` tool, served as an MCP App resource. Includes the *Ask Otto* tab when Otto is configured.
 
 ### `ui://servicenow/ticket-list`
 
-The interactive ticket-discovery result list rendered by `discover_tickets`.
+The interactive ticket-discovery result list rendered by `discover_tickets`, and the chat frame rendered by `open_otto_chat`. Both pages load the shared chat module from `src/ui/otto-chat.html`, which the server inlines at the `<!-- otto-chat -->` placeholder.
 
 ## Client Configuration
 
@@ -263,4 +441,4 @@ For a deployed server, replace the URL with your public endpoint, e.g. `https://
 
 Deploy the built `dist/` to any HTTPS host (Railway, Fly, Render, etc.) and set `BASE_URL` to the server's public URL so OAuth callbacks resolve. The `/authorize` route is handled directly (before `mcpAuthRouter`) to bypass the SDK's `redirect_uri` validation, which would otherwise require persistent client storage.
 
-> **Note:** OAuth client and session state is held in memory. For production, back it with a persistent store (e.g. Redis or PostgreSQL) so registrations and in-flight authorizations survive restarts.
+> **Note:** OAuth client and session state and Otto conversations are held in memory. For production, back them with a persistent store (e.g. Redis or PostgreSQL) so registrations, in-flight authorizations, and chat transcripts survive restarts. Until then, run a single replica so Otto callbacks reach the instance that owns the conversation.
