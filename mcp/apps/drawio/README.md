@@ -69,6 +69,8 @@ The diagram opens in the **full draw.io editor** (`embed.diagrams.net` in a nest
 
 The diagram UI rendered by `render_diagram`, served as an MCP App resource: the embedded [draw.io editor](https://www.drawio.com/doc/faq/embed-mode) with a read-only [viewer](https://www.drawio.com/doc/faq/embed-html-options) fallback.
 
+The editor completes the [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) handshake (`ui/initialize`, then `ui/notifications/initialized`) before the host sends it tool results, and opens links through `ui/open-link`.
+
 ## Client Configuration
 
 ```json
