@@ -286,13 +286,13 @@
             // Try to extract render data from various message formats
             let renderData = null;
 
-            // Format 1: JSON-RPC from mcpJam - { method: "ui/notifications/tool-result", params: { _meta: {...} } }
+            // Format 1: MCP Apps tool result notification
             if (
-              message.method === "ui/notifications/tool-result" &&
-              message.params?._meta?.["mcpui.dev/ui-initial-render-data"]
+              message.method === "ui/notifications/tool-result"
             ) {
               renderData =
-                message.params._meta["mcpui.dev/ui-initial-render-data"];
+                message.params?.structuredContent ||
+                message.params?._meta?.["mcpui.dev/ui-initial-render-data"];
             }
             // Format 2: { type: "renderData", data: {...} }
             else if (message.type === "renderData" && message.data) {
@@ -328,6 +328,11 @@
               this.ontoolresult(message.result);
             }
 
+            if (message.jsonrpc === "2.0" && message.method && message.id != null) {
+              this._answerHostRequest(message);
+              return;
+            }
+
             // Handle JSON-RPC responses (for tool calls)
             if (
               message.jsonrpc === "2.0" &&
@@ -349,8 +354,66 @@
               resolve(message.result);
             }
           });
-          // Notify host that we're ready
-          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+          this.ready = this._initialize();
+        }
+
+        // MCP Apps handshake. Hosts deliver tool input and results only after
+        // ui/notifications/initialized, and Langdock reuses an open app for
+        // later tool calls only once it is in the side panel (pip).
+        async _initialize() {
+          try {
+            const result = await this.request("ui/initialize", {
+              appInfo: { name: this.name, version: this.version },
+              appCapabilities: { availableDisplayModes: ["inline", "pip", "fullscreen"] },
+              protocolVersion: "2026-01-26",
+            });
+            window.parent.postMessage(
+              { jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} },
+              "*",
+            );
+            this._reportSize();
+            const context = result?.hostContext || {};
+            if (
+              context.displayMode !== "pip" &&
+              (context.availableDisplayModes || []).includes("pip")
+            ) {
+              await this.request("ui/request-display-mode", { mode: "pip" });
+            }
+          } catch (e) {
+            console.warn("MCP Apps handshake failed:", e);
+          }
+        }
+
+        _answerHostRequest(message) {
+          const known = message.method === "ui/resource-teardown" || message.method === "ping";
+          window.parent.postMessage(
+            known
+              ? { jsonrpc: "2.0", id: message.id, result: {} }
+              : { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Method not found" } },
+            "*",
+          );
+        }
+
+        _reportSize() {
+          const send = () =>
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                method: "ui/notifications/size-changed",
+                params: { height: Math.ceil(document.documentElement.scrollHeight) },
+              },
+              "*",
+            );
+          send();
+          new ResizeObserver(send).observe(document.body);
+        }
+
+        request(method, params) {
+          const id = ++this._messageId;
+          return new Promise((resolve, reject) => {
+            this._pendingRequests.set(id, { resolve, reject });
+            window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+          });
         }
 
         // Process any queued messages after handler is set
@@ -362,22 +425,9 @@
         }
 
         async callServerTool(params) {
-          const id = ++this._messageId;
-          return new Promise((resolve, reject) => {
-            this._pendingRequests.set(id, { resolve, reject });
-            // Use JSON-RPC format for mcpJam compatibility
-            window.parent.postMessage(
-              {
-                jsonrpc: "2.0",
-                method: "tools/call",
-                id,
-                params: {
-                  name: params.name,
-                  arguments: params.arguments,
-                },
-              },
-              "*",
-            );
+          return this.request("tools/call", {
+            name: params.name,
+            arguments: params.arguments,
           });
         }
       }
@@ -388,6 +438,11 @@
       let currentTable = "";
       let formFields = [];
       let prefillData = {};
+      let contextTimer = null;
+      // Langdock caps model context at 32,000 bytes per app.
+      const MAX_CONTEXT_VALUE_LENGTH = 2000;
+      const MAX_CONTEXT_BYTES = 30000;
+      const byteLength = (value) => new TextEncoder().encode(value).length;
 
       function parseToolTextPayload(text) {
         if (typeof text !== "string") return null;
@@ -426,10 +481,7 @@
       // Check for embedded schema (self-contained mode)
       const embeddedSchema = getEmbeddedSchema();
       if (embeddedSchema) {
-        currentTable = embeddedSchema.table;
-        formFields = embeddedSchema.fields;
-        prefillData = embeddedSchema.prefill || {};
-        renderForm(embeddedSchema);
+        displayForm(embeddedSchema);
       }
 
       // Connect to host EARLY to start receiving messages
@@ -440,10 +492,13 @@
       app.onrenderdata = (data) => {
         try {
           if (data.table && data.fields) {
-            currentTable = data.table;
-            formFields = data.fields;
-            prefillData = data.prefill || {};
-            renderForm(data);
+            displayForm(data);
+          } else if (
+            data.table === currentTable &&
+            data.prefill &&
+            typeof data.prefill === "object"
+          ) {
+            updateExistingForm(data.prefill);
           }
         } catch (e) {
           console.error("Error processing render data:", e);
@@ -459,9 +514,15 @@
           if (textContent) {
             const data = parseToolTextPayload(textContent);
             if (data && typeof data === "object" && data.table && data.fields) {
-              currentTable = data.table;
-              formFields = data.fields;
-              renderForm(data);
+              displayForm(data);
+            } else if (
+              data &&
+              typeof data === "object" &&
+              data.table === currentTable &&
+              data.prefill &&
+              typeof data.prefill === "object"
+            ) {
+              updateExistingForm(data.prefill);
             } else if (data && typeof data === "object" && data.sys_id) {
               // Successful submission
               renderSuccess(data);
@@ -479,6 +540,141 @@
 
       function toTitleCase(str) {
         return str.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      function getSchemaSignature(fields) {
+        return JSON.stringify(
+          fields.map((field) => ({
+            name: field.name,
+            inputType: field.inputType,
+            readOnly: field.readOnly,
+            required: field.required,
+            choices: field.choices,
+          })),
+        );
+      }
+
+      function displayForm(schema) {
+        const form = document.getElementById("servicenow-form");
+        const canUpdateExistingForm =
+          form &&
+          currentTable === schema.table &&
+          getSchemaSignature(formFields) === getSchemaSignature(schema.fields);
+
+        currentTable = schema.table;
+        formFields = schema.fields;
+        prefillData = schema.prefill || {};
+
+        if (canUpdateExistingForm) {
+          updateExistingForm(prefillData);
+        } else {
+          renderForm(schema);
+        }
+      }
+
+      function updateExistingForm(prefill) {
+        const form = document.getElementById("servicenow-form");
+        if (!form) return;
+
+        for (const [name, value] of Object.entries(prefill)) {
+          const control = form.elements.namedItem(name);
+          if (!control) continue;
+
+          if (control instanceof HTMLInputElement && control.type === "checkbox") {
+            const checked = value === true || value === "true";
+            control.checked = checked;
+            control.defaultChecked = checked;
+          } else if (
+            control instanceof HTMLInputElement ||
+            control instanceof HTMLTextAreaElement
+          ) {
+            control.value = value == null ? "" : String(value);
+            control.defaultValue = control.value;
+          } else if (control instanceof HTMLSelectElement) {
+            control.value = value == null ? "" : String(value);
+            for (const option of control.options) {
+              option.defaultSelected = option.selected;
+            }
+          }
+        }
+        shareFormContext();
+      }
+
+      function readControl(control) {
+        if (control instanceof HTMLInputElement && control.type === "checkbox") {
+          return {
+            value: control.checked ? "true" : "false",
+            initial: control.defaultChecked ? "true" : "false",
+          };
+        }
+        if (control instanceof HTMLSelectElement) {
+          const initial = [...control.options].find((o) => o.defaultSelected);
+          return { value: control.value, initial: initial ? initial.value : "" };
+        }
+        return { value: control.value, initial: control.defaultValue };
+      }
+
+      function clip(value) {
+        return value.length > MAX_CONTEXT_VALUE_LENGTH
+          ? value.slice(0, MAX_CONTEXT_VALUE_LENGTH) + "…"
+          : value;
+      }
+
+      // Unsaved edits live only in the iframe; share them so the model can
+      // answer questions about the form on the next turn.
+      function shareFormContext(state = "editing", record = null) {
+        clearTimeout(contextTimer);
+        contextTimer = setTimeout(() => {
+          const form = document.getElementById("servicenow-form");
+          const values = {};
+          const changed = [];
+          if (form) {
+            for (const field of formFields) {
+              if (field.readOnly) continue;
+              const control = form.elements.namedItem(field.name);
+              if (!control) continue;
+              const { value, initial } = readControl(control);
+              if (value !== "") values[field.name] = clip(value);
+              if (value !== initial) {
+                changed.push({
+                  field: field.name,
+                  label: field.label,
+                  from: clip(initial),
+                  to: clip(value),
+                });
+              }
+            }
+          }
+          const context = {
+            app: "ServiceNow form",
+            table: currentTable,
+            state,
+            ...(record ? { record } : {}),
+            changedSinceShown: changed,
+            currentValues: values,
+          };
+          let text = JSON.stringify(context);
+          if (byteLength(text) > MAX_CONTEXT_BYTES) {
+            context.currentValues = Object.fromEntries(
+              changed.map((c) => [c.field, c.to]),
+            );
+            context.note = "Unchanged values omitted to fit the context limit.";
+            text = JSON.stringify(context);
+          }
+          while (byteLength(text) > MAX_CONTEXT_BYTES && context.changedSinceShown.length) {
+            const dropped = context.changedSinceShown.pop();
+            delete context.currentValues[dropped.field];
+            context.truncated = true;
+            text = JSON.stringify(context);
+          }
+          Promise.resolve(app.ready)
+            .then(() =>
+              app.request("ui/update-model-context", {
+                content: [{ type: "text", text }],
+              }),
+            )
+            .catch(() => {});
+        }, 400);
       }
 
       function renderForm(schema) {
@@ -507,9 +703,24 @@
 
         contentEl.innerHTML = html;
 
-        document
-          .getElementById("servicenow-form")
-          .addEventListener("submit", handleSubmit);
+        const form = document.getElementById("servicenow-form");
+        form.addEventListener("submit", handleSubmit);
+        form.addEventListener("input", () => shareFormContext());
+        form.addEventListener("change", () => shareFormContext());
+        form.addEventListener("reset", () => shareFormContext());
+        shareFormContext();
+      }
+
+      function referenceTableName(referenceTable) {
+        if (!referenceTable) return "";
+        if (typeof referenceTable === "string") return referenceTable;
+        return (
+          referenceTable.name ||
+          referenceTable.value ||
+          referenceTable.label ||
+          referenceTable.display_value ||
+          ""
+        );
       }
 
       function renderField(field) {
@@ -572,12 +783,7 @@
             break;
 
           case "reference":
-            const refTable =
-              typeof field.referenceTable === "string"
-                ? field.referenceTable
-                : field.referenceTable?.name ||
-                  field.referenceTable?.label ||
-                  "";
+            const refTable = referenceTableName(field.referenceTable);
             input = `<input type="text" name="${field.name}" id="${field.name}" placeholder="${refTable ? "Search " + toTitleCase(refTable) + "..." : "Enter sys_id"}" value="${safeVal}" ${maxLength} ${field.required ? "required" : ""}>`;
             break;
 
@@ -589,10 +795,7 @@
         if (field.hint) {
           hint = `<div class="hint">${field.hint}</div>`;
         } else if (field.referenceTable) {
-          const refName =
-            typeof field.referenceTable === "string"
-              ? field.referenceTable
-              : field.referenceTable?.name || field.referenceTable?.label || "";
+          const refName = referenceTableName(field.referenceTable);
           if (refName)
             hint = `<div class="hint">References ${toTitleCase(refName)}</div>`;
         }
@@ -648,6 +851,10 @@
               typeof responseData === "object" &&
               responseData.sys_id
             ) {
+              shareFormContext("submitted", {
+                sys_id: responseData.sys_id,
+                number: responseData.number,
+              });
               renderSuccess(responseData);
             } else if (typeof responseData === "string") {
               throw new Error(responseData);

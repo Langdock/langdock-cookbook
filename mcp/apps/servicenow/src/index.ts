@@ -33,6 +33,16 @@ import {
   uploadAttachment,
   updateRecord,
 } from "./servicenow/client.js";
+import {
+  OTTO_CALLBACK_PATH,
+  OTTO_DISABLED_MESSAGE,
+  OTTO_MAX_WAIT_SECONDS,
+  type OttoTicketContext,
+  handleOttoCallback,
+  isOttoEnabled,
+  pollOtto,
+  sendToOtto,
+} from "./otto/ottoChat.js";
 import { encodeForDataAttr } from "./utils/encodeForDataAttr.js";
 import { extractCustomHeaders } from "./utils/extractCustomHeaders.js";
 import { getBaseUrl } from "./utils/getBaseUrl.js";
@@ -187,6 +197,9 @@ app.all("/mcp", async (req: Request, res: Response) => {
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+// Virtual Agent API response endpoint: ServiceNow posts Otto's replies here.
+app.post(OTTO_CALLBACK_PATH, handleOttoCallback);
+
 // ---------------------------------------------------------------------------
 // MCP Server Factory
 // ---------------------------------------------------------------------------
@@ -221,6 +234,20 @@ function formatTicketResults(
   return [summary, warning].filter(Boolean).join("\n\n");
 }
 
+async function renderTicketList(
+  renderData: Record<string, unknown>,
+): Promise<string> {
+  let html = await getTicketListHtml();
+  html = html.replace(
+    '<div class="ticket-list-container">',
+    `<div class="ticket-list-container" data-tickets="${encodeForDataAttr(renderData)}">`,
+  );
+  return html.replace(
+    "</head>",
+    `<script>window.TICKET_LIST_DATA = ${safeJsonForHtml(renderData)};</script></head>`,
+  );
+}
+
 function createMcpServer(
   token: string,
   customHeaders: Record<string, string> = {},
@@ -233,6 +260,125 @@ function createMcpServer(
   const formResourceUri = "ui://servicenow/form";
   const ticketResourceUri = "ui://servicenow/ticket";
   const ticketListResourceUri = "ui://servicenow/ticket-list";
+
+  /** Load everything the ticket panel renders, for render_ticket and for tools that change a ticket. */
+  async function loadTicketRenderData(table: string | undefined, id: string) {
+    let resolvedTable: string;
+    let recordTable: string;
+    let schema: Awaited<ReturnType<typeof getTicketFields>>;
+    let record: Awaited<ReturnType<typeof getRecord>>;
+    let activity: Awaited<ReturnType<typeof getActivity>>;
+    let attachments: Awaited<ReturnType<typeof getAttachments>>;
+    const idIsSysId = /^[0-9a-f]{32}$/i.test(id.trim());
+
+    if (table && idIsSysId) {
+      // Discovery cards already provide the concrete table and sys_id, so
+      // record, activity, and attachment requests can run concurrently.
+      resolvedTable = table;
+      const [recordResult, loadedActivity, loadedAttachments] =
+        await Promise.all([
+          getRecordWithTaskFallback(
+            table,
+            id,
+            token,
+            customHeaders,
+          ),
+          getActivity(table, id, token, customHeaders),
+          getAttachments(table, id, token, customHeaders),
+        ]);
+      record = recordResult.record;
+      recordTable = recordResult.recordTable;
+      activity = loadedActivity;
+      attachments = loadedAttachments;
+      schema = await getTicketFields(
+        recordTable,
+        token,
+        customHeaders,
+      );
+    } else if (table) {
+      resolvedTable = table;
+      const recordResult = await getRecordWithTaskFallback(
+        table,
+        id,
+        token,
+        customHeaders,
+      );
+      record = recordResult.record;
+      recordTable = recordResult.recordTable;
+      [schema, activity, attachments] = await Promise.all([
+        getTicketFields(recordTable, token, customHeaders),
+        getActivity(table, record.sysId, token, customHeaders),
+        getAttachments(table, record.sysId, token, customHeaders),
+      ]);
+    } else {
+      const initialRecord = await getRecord(
+        "task",
+        id,
+        token,
+        customHeaders,
+      );
+      resolvedTable =
+        initialRecord.values.sys_class_name?.value || "task";
+      const recordResult =
+        resolvedTable === "task"
+          ? { record: initialRecord, recordTable: "task" }
+          : await getRecordWithTaskFallback(
+              resolvedTable,
+              initialRecord.sysId,
+              token,
+              customHeaders,
+            );
+      record = recordResult.record;
+      recordTable = recordResult.recordTable;
+      [schema, activity, attachments] = await Promise.all([
+        getTicketFields(recordTable, token, customHeaders),
+        getActivity(
+          resolvedTable,
+          record.sysId,
+          token,
+          customHeaders,
+        ),
+        getAttachments(
+          resolvedTable,
+          record.sysId,
+          token,
+          customHeaders,
+        ),
+      ]);
+    }
+
+    // Flatten record values for form seeding (raw values + display labels).
+    const values: Record<string, string> = {};
+    const displays: Record<string, string> = {};
+    for (const [name, v] of Object.entries(record.values)) {
+      values[name] = v.value;
+      displays[name] = v.display;
+    }
+
+    const recordUrl = `${getInstanceUrl()}/nav_to.do?uri=${encodeURIComponent(
+      `${resolvedTable}.do?sys_id=${record.sysId}`,
+    )}`;
+
+    const renderData = {
+      table: resolvedTable,
+      recordTable,
+      sysId: record.sysId,
+      number: record.number ?? "",
+      isTaskTable: schema.isTaskTable ?? false,
+      fields: schema.fields,
+      values,
+      displays,
+      activity,
+      attachments,
+      recordUrl,
+      accessNotice:
+        recordTable !== resolvedTable
+          ? `This ticket is opened through the parent task API because ServiceNow denied direct API access to ${resolvedTable}. Only inherited task fields are editable.`
+          : undefined,
+      otto: { enabled: isOttoEnabled() },
+    };
+    return renderData;
+  }
 
   // Register form UI resource
   registerAppResource(
@@ -614,16 +760,9 @@ function createMcpServer(
           sortLabel: order_by
             ? `${order_by.replaceAll("_", " ")} ${order_direction || defaultDirection}`
             : "priority, impact, oldest opened",
+          otto: { enabled: isOttoEnabled() },
         };
-        let html = await getTicketListHtml();
-        html = html.replace(
-          '<div class="ticket-list-container">',
-          `<div class="ticket-list-container" data-tickets="${encodeForDataAttr(renderData)}">`,
-        );
-        html = html.replace(
-          "</head>",
-          `<script>window.TICKET_LIST_DATA = ${safeJsonForHtml(renderData)};</script></head>`,
-        );
+        const html = await renderTicketList(renderData);
         return {
           content: [
             {
@@ -657,7 +796,7 @@ function createMcpServer(
     {
       title: "Render Form",
       description:
-        "Display an interactive form to create a ServiceNow record. Optionally call get_form_fields first to see available fields.",
+        "Render a new interactive form to create a ServiceNow record. Use update_form for later field changes so the existing form is reused.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         prefill: z
@@ -692,7 +831,42 @@ function createMcpServer(
               },
             },
           ],
+          structuredContent: renderData,
           _meta: { "mcpui.dev/ui-initial-render-data": renderData },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Update values in the currently rendered form
+  registerAppTool(
+    server,
+    "update_form",
+    {
+      title: "Update Form",
+      description:
+        "Update fields in an existing ServiceNow form without rendering a new form. Call render_form first.",
+      inputSchema: {
+        table: z.string().describe("The ServiceNow table name"),
+        prefill: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .describe("Key-value pairs to update in the existing form"),
+      },
+      _meta: { ui: { resourceUri: formResourceUri } },
+    },
+    async ({ table, prefill }) => {
+      try {
+        const schema = await getFormFields(table, token, customHeaders);
+        const updateData = { ...schema, prefill };
+        return {
+          content: [{ type: "text", text: JSON.stringify(updateData) }],
+          structuredContent: updateData,
+          _meta: { "mcpui.dev/ui-initial-render-data": updateData },
         };
       } catch (error) {
         return {
@@ -734,12 +908,25 @@ function createMcpServer(
     },
   );
 
+  // Ticket changes are routed into an open ticket panel; a failed reload must
+  // not turn a successful write into an error.
+  async function ticketPanelMeta(table: string, sysId: string) {
+    try {
+      const renderData = await loadTicketRenderData(table, sysId);
+      return { "mcpui.dev/ui-initial-render-data": renderData };
+    } catch {
+      return undefined;
+    }
+  }
+
   // Tool: Update fields on an existing record
-  server.registerTool(
+  registerAppTool(
+    server,
     "update_record",
     {
       title: "Update Record",
-      description: "Update field values on an existing ServiceNow record.",
+      description:
+        "Update field values on an existing ServiceNow record. An open ticket panel for the record shows the new values.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         sys_id: z.string().describe("The sys_id of the record to update"),
@@ -747,6 +934,7 @@ function createMcpServer(
           .record(z.string(), z.unknown())
           .describe("The field values to update"),
       },
+      _meta: { ui: { resourceUri: ticketResourceUri } },
     },
     async ({ table, sys_id, data }) => {
       try {
@@ -761,6 +949,7 @@ function createMcpServer(
           content: [
             { type: "text" as const, text: JSON.stringify(record, null, 2) },
           ],
+          _meta: await ticketPanelMeta(table, sys_id),
         };
       } catch (error) {
         return {
@@ -772,12 +961,13 @@ function createMcpServer(
   );
 
   // Tool: Append a comment or work note, and return the refreshed activity
-  server.registerTool(
+  registerAppTool(
+    server,
     "add_journal_entry",
     {
       title: "Add Journal Entry",
       description:
-        "Append a comment (customer-visible) or work note (internal) to a record's activity stream.",
+        "Append a comment (customer-visible) or work note (internal) to a record's activity stream. An open ticket panel for the record shows the new entry.",
       inputSchema: {
         table: z.string().describe("The ServiceNow table name"),
         activity_table: z
@@ -792,6 +982,7 @@ function createMcpServer(
           .describe("Which journal field to append to"),
         text: z.string().describe("The comment or work note text"),
       },
+      _meta: { ui: { resourceUri: ticketResourceUri } },
     },
     async ({ table, activity_table, sys_id, field, text }) => {
       try {
@@ -802,16 +993,20 @@ function createMcpServer(
           token,
           customHeaders,
         );
-        const activity = await getActivity(
-          activity_table || table,
-          sys_id,
-          token,
-          customHeaders,
-        );
+        const meta = await ticketPanelMeta(activity_table || table, sys_id);
+        const activity =
+          meta?.["mcpui.dev/ui-initial-render-data"].activity ??
+          (await getActivity(
+            activity_table || table,
+            sys_id,
+            token,
+            customHeaders,
+          ));
         return {
           content: [
             { type: "text" as const, text: JSON.stringify({ activity }, null, 2) },
           ],
+          _meta: meta,
         };
       } catch (error) {
         return {
@@ -959,119 +1154,7 @@ function createMcpServer(
     },
     async ({ table, id }) => {
       try {
-        let resolvedTable: string;
-        let recordTable: string;
-        let schema: Awaited<ReturnType<typeof getTicketFields>>;
-        let record: Awaited<ReturnType<typeof getRecord>>;
-        let activity: Awaited<ReturnType<typeof getActivity>>;
-        let attachments: Awaited<ReturnType<typeof getAttachments>>;
-        const idIsSysId = /^[0-9a-f]{32}$/i.test(id.trim());
-
-        if (table && idIsSysId) {
-          // Discovery cards already provide the concrete table and sys_id, so
-          // record, activity, and attachment requests can run concurrently.
-          resolvedTable = table;
-          const [recordResult, loadedActivity, loadedAttachments] =
-            await Promise.all([
-              getRecordWithTaskFallback(
-                table,
-                id,
-                token,
-                customHeaders,
-              ),
-              getActivity(table, id, token, customHeaders),
-              getAttachments(table, id, token, customHeaders),
-            ]);
-          record = recordResult.record;
-          recordTable = recordResult.recordTable;
-          activity = loadedActivity;
-          attachments = loadedAttachments;
-          schema = await getTicketFields(
-            recordTable,
-            token,
-            customHeaders,
-          );
-        } else if (table) {
-          resolvedTable = table;
-          const recordResult = await getRecordWithTaskFallback(
-            table,
-            id,
-            token,
-            customHeaders,
-          );
-          record = recordResult.record;
-          recordTable = recordResult.recordTable;
-          [schema, activity, attachments] = await Promise.all([
-            getTicketFields(recordTable, token, customHeaders),
-            getActivity(table, record.sysId, token, customHeaders),
-            getAttachments(table, record.sysId, token, customHeaders),
-          ]);
-        } else {
-          const initialRecord = await getRecord(
-            "task",
-            id,
-            token,
-            customHeaders,
-          );
-          resolvedTable =
-            initialRecord.values.sys_class_name?.value || "task";
-          const recordResult =
-            resolvedTable === "task"
-              ? { record: initialRecord, recordTable: "task" }
-              : await getRecordWithTaskFallback(
-                  resolvedTable,
-                  initialRecord.sysId,
-                  token,
-                  customHeaders,
-                );
-          record = recordResult.record;
-          recordTable = recordResult.recordTable;
-          [schema, activity, attachments] = await Promise.all([
-            getTicketFields(recordTable, token, customHeaders),
-            getActivity(
-              resolvedTable,
-              record.sysId,
-              token,
-              customHeaders,
-            ),
-            getAttachments(
-              resolvedTable,
-              record.sysId,
-              token,
-              customHeaders,
-            ),
-          ]);
-        }
-
-        // Flatten record values for form seeding (raw values + display labels).
-        const values: Record<string, string> = {};
-        const displays: Record<string, string> = {};
-        for (const [name, v] of Object.entries(record.values)) {
-          values[name] = v.value;
-          displays[name] = v.display;
-        }
-
-        const recordUrl = `${getInstanceUrl()}/nav_to.do?uri=${encodeURIComponent(
-          `${resolvedTable}.do?sys_id=${record.sysId}`,
-        )}`;
-
-        const renderData = {
-          table: resolvedTable,
-          recordTable,
-          sysId: record.sysId,
-          number: record.number ?? "",
-          isTaskTable: schema.isTaskTable ?? false,
-          fields: schema.fields,
-          values,
-          displays,
-          activity,
-          attachments,
-          recordUrl,
-          accessNotice:
-            recordTable !== resolvedTable
-              ? `This ticket is opened through the parent task API because ServiceNow denied direct API access to ${resolvedTable}. Only inherited task fields are editable.`
-              : undefined,
-        };
+        const renderData = await loadTicketRenderData(table, id);
 
         let html = await getTicketHtml();
         html = html.replace(
@@ -1083,7 +1166,7 @@ function createMcpServer(
           content: [
             {
               type: "text",
-              text: `Opened ${record.number || record.sysId} from ${resolvedTable}.`,
+              text: `Opened ${renderData.number || renderData.sysId} from ${renderData.table}.`,
             },
             {
               type: "resource",
@@ -1094,10 +1177,204 @@ function createMcpServer(
               },
             },
           ],
+          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
         };
       } catch (error) {
         return {
           content: [{ type: "text", text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool: Open an Otto chat in the ServiceNow frame
+  registerAppTool(
+    server,
+    "open_otto_chat",
+    {
+      title: "Ask Otto",
+      description:
+        "Open a chat with ServiceNow Otto, the Virtual Agent with Now Assist, inside the ServiceNow frame. Use when the user wants to ask Otto or the ServiceNow virtual agent something: knowledge questions, catalog requests, live-agent handoff, or help with a specific ticket. Pass ticket to give Otto that ticket as context, and message to send the user's first question right away. The user continues the conversation in the frame and can open tickets Otto mentions without leaving it.",
+      inputSchema: {
+        ticket: z
+          .string()
+          .optional()
+          .describe("Ticket number or sys_id the chat is about, e.g. INC0010023"),
+        table: z
+          .string()
+          .optional()
+          .describe("Optional table of the ticket. Omit it to detect the type automatically."),
+        message: z
+          .string()
+          .max(4000)
+          .optional()
+          .describe("The user's first message to Otto, sent immediately"),
+      },
+      _meta: { ui: { resourceUri: ticketListResourceUri } },
+    },
+    async ({ ticket, table, message }) => {
+      try {
+        if (!isOttoEnabled()) throw new Error(OTTO_DISABLED_MESSAGE);
+        let context: OttoTicketContext | undefined;
+        if (ticket) {
+          const fields = ["sys_id", "number", "short_description", "sys_class_name"];
+          try {
+            const record = table
+              ? (await getRecordWithTaskFallback(table, ticket, token, customHeaders, fields)).record
+              : await getRecord("task", ticket, token, customHeaders, fields);
+            context = {
+              number: record.number || record.sysId,
+              table: table || record.values.sys_class_name?.value || "task",
+              sysId: record.sysId,
+              title: record.values.short_description?.display || "",
+            };
+          } catch {
+            // Otto can still work from the number when the record isn't readable here.
+            context = { number: ticket.trim(), table };
+          }
+        }
+        const update = message?.trim()
+          ? await sendToOtto(
+              { text: message, ticket: context },
+              token,
+              customHeaders,
+            )
+          : undefined;
+        const renderData = {
+          title: "Ask Otto",
+          tickets: [],
+          view: "otto",
+          otto: {
+            enabled: true,
+            conversationId: update?.conversationId,
+            ticket: context,
+          },
+        };
+        const html = await renderTicketList(renderData);
+        const about = context ? ` about ${context.number}` : "";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: message?.trim()
+                ? `Sent the question to Otto${about}. Otto's reply appears in the chat frame, where the user can continue the conversation.`
+                : `Opened an Otto chat${about}. The user can type their question in the frame.`,
+            },
+            {
+              type: "resource" as const,
+              resource: {
+                uri: ticketListResourceUri,
+                mimeType: RESOURCE_MIME_TYPE,
+                text: html,
+              },
+            },
+          ],
+          _meta: { "mcpui.dev/ui-initial-render-data": renderData },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  const ottoTicketContext = z
+    .object({
+      number: z.string().max(100),
+      table: z.string().max(80).optional(),
+      sysId: z.string().max(32).optional(),
+      title: z.string().max(500).optional(),
+    })
+    .optional();
+
+  // App-only tool: send a chat message to Otto
+  registerAppTool(
+    server,
+    "otto_send",
+    {
+      title: "Send to Otto",
+      description:
+        "Send a message from the Otto chat frame to ServiceNow Otto. Returns the transcript changes after `after`.",
+      inputSchema: {
+        conversation_id: z.string().max(64).optional(),
+        after: z.number().int().min(0).optional(),
+        text: z.string().max(4000).default(""),
+        label: z.string().max(500).optional(),
+        typed: z.boolean().optional(),
+        action: z.enum(["AGENT", "END_CONVERSATION"]).optional(),
+        ticket: ottoTicketContext,
+        timezone: z.string().max(64).optional(),
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ conversation_id, after, text, label, typed, action, ticket, timezone }) => {
+      try {
+        if (!text.trim() && !action) throw new Error("Type a message for Otto.");
+        if (action === "END_CONVERSATION" && !conversation_id) {
+          throw new Error("There is no Otto conversation to end.");
+        }
+        const update = await sendToOtto(
+          {
+            conversationId: conversation_id,
+            after,
+            text,
+            label,
+            typed,
+            action,
+            ticket,
+            timezone,
+          },
+          token,
+          customHeaders,
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(update) }],
+          structuredContent: { ...update },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // App-only tool: long-poll Otto's replies
+  registerAppTool(
+    server,
+    "otto_poll",
+    {
+      title: "Poll Otto",
+      description:
+        "Wait for new messages in an Otto conversation after `after`, returning as soon as something changes.",
+      inputSchema: {
+        conversation_id: z.string().max(64),
+        after: z.number().int().min(0).default(0),
+        wait_seconds: z.number().int().min(0).max(OTTO_MAX_WAIT_SECONDS).default(20),
+      },
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ conversation_id, after, wait_seconds }) => {
+      try {
+        const update = await pollOtto(
+          conversation_id,
+          after,
+          wait_seconds,
+          token,
+          customHeaders,
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(update) }],
+          structuredContent: { ...update },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: String(error) }],
           isError: true,
         };
       }
