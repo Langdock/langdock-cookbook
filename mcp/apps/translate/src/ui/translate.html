@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Translation</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #09090b;
+        --fg-muted: #71717a;
+        --border: #e4e4e7;
+        --pane-bg: #fafafa;
+        --accent: #0f766e;
+        --accent-soft: #ccfbf1;
+        --btn-bg: #ffffff;
+        --btn-hover: #f4f4f5;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        background: var(--bg);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .translate-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100%;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+      }
+
+      .title {
+        font-weight: 600;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .title .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        background: var(--accent);
+        flex: 0 0 auto;
+      }
+
+      .lang-flow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+        color: var(--fg-muted);
+        font-size: 13px;
+      }
+
+      .lang-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
+        font-size: 12px;
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .lang-arrow {
+        color: var(--fg-muted);
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
+      .pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        background: var(--pane-bg);
+      }
+
+      .pane + .pane {
+        border-left: 1px solid var(--border);
+      }
+
+      .pane-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg);
+        flex: 0 0 auto;
+      }
+
+      .pane-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--fg-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .btn {
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        padding: 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--btn-bg);
+        color: var(--fg);
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+
+      .btn:hover {
+        background: var(--btn-hover);
+      }
+
+      .btn:active {
+        transform: translateY(1px);
+      }
+
+      .btn.copied {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .pane-body {
+        flex: 1 1 auto;
+        overflow: auto;
+        padding: 16px 14px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 15px;
+        line-height: 1.6;
+        background: var(--bg);
+      }
+
+      .pane.target .pane-body {
+        color: var(--fg);
+      }
+
+      .empty {
+        color: var(--fg-muted);
+        font-style: italic;
+      }
+
+      @media (max-width: 640px) {
+        header {
+          flex-wrap: wrap;
+        }
+
+        .panels {
+          grid-template-columns: 1fr;
+        }
+
+        .pane + .pane {
+          border-left: none;
+          border-top: 1px solid var(--border);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="translate-container">
+      <header>
+        <div class="title">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="title-text">Translation</span>
+        </div>
+        <div class="lang-flow" aria-label="Language direction">
+          <span class="lang-chip" id="source-lang">—</span>
+          <span class="lang-arrow" aria-hidden="true">→</span>
+          <span class="lang-chip" id="target-lang">—</span>
+        </div>
+      </header>
+      <div class="panels">
+        <section class="pane source" aria-label="Original text">
+          <div class="pane-header">
+            <span class="pane-label" id="source-pane-label">Original</span>
+            <button type="button" class="btn" id="copy-source" data-target="source">
+              Copy
+            </button>
+          </div>
+          <div class="pane-body" id="source-text"></div>
+        </section>
+        <section class="pane target" aria-label="Translated text">
+          <div class="pane-header">
+            <span class="pane-label" id="target-pane-label">Translation</span>
+            <button type="button" class="btn" id="copy-target" data-target="target">
+              Copy
+            </button>
+          </div>
+          <div class="pane-body" id="translated-text"></div>
+        </section>
+      </div>
+    </div>
+    <script>
+      (function () {
+        function readData() {
+          if (window.TRANSLATE_DATA && typeof window.TRANSLATE_DATA === "object") {
+            return window.TRANSLATE_DATA;
+          }
+          var root = document.querySelector(".translate-container");
+          var raw = root && root.getAttribute("data-schema");
+          if (!raw) return {};
+          try {
+            return JSON.parse(raw);
+          } catch (e) {
+            return {};
+          }
+        }
+
+        function setText(el, value) {
+          if (!el) return;
+          var text = value == null ? "" : String(value);
+          if (!text) {
+            el.classList.add("empty");
+            el.textContent = "No text";
+            return;
+          }
+          el.classList.remove("empty");
+          el.textContent = text;
+        }
+
+        function flashCopied(btn) {
+          if (!btn) return;
+          var prev = btn.textContent;
+          btn.classList.add("copied");
+          btn.textContent = "Copied";
+          setTimeout(function () {
+            btn.classList.remove("copied");
+            btn.textContent = prev;
+          }, 1200);
+        }
+
+        async function copyText(text, btn) {
+          if (!text) return;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+            } else {
+              var ta = document.createElement("textarea");
+              ta.value = text;
+              ta.setAttribute("readonly", "");
+              ta.style.position = "absolute";
+              ta.style.left = "-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+            }
+            flashCopied(btn);
+          } catch (e) {
+            console.error("Copy failed", e);
+          }
+        }
+
+        var data = readData();
+        var sourceText = data.sourceText || "";
+        var translatedText = data.translatedText || "";
+        var sourceLanguage = data.sourceLanguage || "Source";
+        var targetLanguage = data.targetLanguage || "Target";
+
+        document.getElementById("title-text").textContent =
+          data.title || "Translation";
+        document.getElementById("source-lang").textContent = sourceLanguage;
+        document.getElementById("target-lang").textContent = targetLanguage;
+        document.getElementById("source-pane-label").textContent =
+          sourceLanguage;
+        document.getElementById("target-pane-label").textContent =
+          targetLanguage;
+
+        setText(document.getElementById("source-text"), sourceText);
+        setText(document.getElementById("translated-text"), translatedText);
+
+        document
+          .getElementById("copy-source")
+          .addEventListener("click", function (ev) {
+            copyText(sourceText, ev.currentTarget);
+          });
+        document
+          .getElementById("copy-target")
+          .addEventListener("click", function (ev) {
+            copyText(translatedText, ev.currentTarget);
+          });
+      })();
+    </script>
+  </body>
+</html>
