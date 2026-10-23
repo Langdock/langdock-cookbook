@@ -6,6 +6,7 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { translateWithDeepL } from "./deepl/client.js";
 import { encodeForDataAttr } from "./utils/encodeForDataAttr.js";
 import { getTranslateHtml } from "./utils/getTranslateHtml.js";
 import { safeJsonForHtml } from "./utils/safeJsonForHtml.js";
@@ -46,8 +47,7 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
-  // Tool: Translate Text (UI Tool) — side-by-side original vs translation.
-  // The LLM performs the translation; this tool only displays the result.
+  // Tool: Translate Text (UI Tool) — DeepL translates, UI shows side-by-side.
   // -------------------------------------------------------------------------
   registerAppTool(
     server,
@@ -55,30 +55,27 @@ export function createMcpServer(): McpServer {
     {
       title: "Translate Text",
       description:
-        "Display a side-by-side translation panel (original language vs target language), " +
-        "similar to Google Translate or DeepL. " +
-        "YOU perform the translation yourself — detect the source language if needed, " +
-        "translate the text into the target language, then call this tool with BOTH the " +
-        "original text and your translation so the user can compare them. " +
-        "Use this whenever the user asks to translate text, show a translation, or " +
-        "compare original and translated wording. " +
-        "Do not invent a translation API; your model output is the translation.",
+        "Translate text with the DeepL API and display a side-by-side panel " +
+        "(original vs translation), similar to DeepL / Google Translate. " +
+        "Pass the source text and target language only — DeepL detects the source " +
+        "language when omitted and returns the translation. " +
+        "Use this whenever the user asks to translate text. " +
+        "Do NOT translate yourself; call this tool and let DeepL do the work.",
       inputSchema: {
         source_text: z
           .string()
-          .describe("The original text in the source language."),
-        translated_text: z
-          .string()
-          .describe("Your translation of source_text into the target language."),
-        source_language: z
-          .string()
-          .describe(
-            "Detected or stated source language name, e.g. 'English', 'German', 'French'. " +
-              "Use 'auto' only if you truly cannot tell.",
-          ),
+          .describe("The text to translate."),
         target_language: z
           .string()
-          .describe("Target language name, e.g. 'German', 'Spanish', 'Japanese'."),
+          .describe(
+            "Target language as a DeepL code (DE, EN-US, FR, …) or common name (German, English, French).",
+          ),
+        source_language: z
+          .string()
+          .optional()
+          .describe(
+            "Optional source language (DeepL code or name). Omit to let DeepL auto-detect.",
+          ),
         title: z
           .string()
           .optional()
@@ -86,20 +83,20 @@ export function createMcpServer(): McpServer {
       },
       _meta: { ui: { resourceUri: TRANSLATE_RESOURCE_URI } },
     },
-    async ({
-      source_text,
-      translated_text,
-      source_language,
-      target_language,
-      title,
-    }) => {
+    async ({ source_text, target_language, source_language, title }) => {
       try {
+        const result = await translateWithDeepL({
+          text: source_text,
+          targetLanguage: target_language,
+          sourceLanguage: source_language,
+        });
+
         const renderData = {
           title: title ?? "Translation",
           sourceText: source_text,
-          translatedText: translated_text,
-          sourceLanguage: source_language,
-          targetLanguage: target_language,
+          translatedText: result.translatedText,
+          sourceLanguage: result.sourceLanguageLabel,
+          targetLanguage: result.targetLanguageLabel,
         };
 
         let html = await getTranslateHtml();
@@ -113,8 +110,6 @@ export function createMcpServer(): McpServer {
         );
 
         return {
-          // First content item is the render data as JSON — matching draw.io /
-          // google-maps so the Langdock host renders the UI inline.
           content: [
             { type: "text", text: JSON.stringify(renderData) },
             {
