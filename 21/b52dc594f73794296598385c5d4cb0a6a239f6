@@ -1,0 +1,64 @@
+mcp/authentication/README.md
+  s_33c798ce534bea::t_fb4c1bcbd6bfe2 54-57
+  s_33c798ce534bea::t_506f46fb1c9928 3,11
+mcp/authentication/sap-btp/destination-service/xs-security.json
+  s_33c798ce534bea::t_f01705ad95d3a2 1-12
+mcp/authentication/sap-btp/destination-service/src/index.ts
+  s_33c798ce534bea::t_504dfe644b1847 1-760
+mcp/authentication/sap-btp/README.md
+  s_33c798ce534bea::t_21e1e4a3d23c74 1-49
+mcp/authentication/sap-btp/destination-service/manifest.yml
+  s_33c798ce534bea::t_10fb33b5c2365b 1-17
+mcp/authentication/sap-btp/token-forwarding/xs-security.json
+  s_33c798ce534bea::t_0a1dfc86e86535 1-12
+mcp/authentication/sap-btp/destination-service/README.md
+  s_33c798ce534bea::t_e1e5cd783a5ca1 1-133
+mcp/README.md
+  s_33c798ce534bea::t_b66909b885df94 11
+mcp/authentication/sap-btp/token-forwarding/manifest.yml
+  s_33c798ce534bea::t_eb17027f12604b 1-16
+mcp/authentication/sap-btp/destination-service/.gitignore
+  s_33c798ce534bea::t_516feed061c2b4 1-3
+mcp/authentication/sap-btp/token-forwarding/README.md
+  s_33c798ce534bea::t_8e409533cec5dc 1-131
+mcp/authentication/sap-btp/destination-service/.env.example
+  s_33c798ce534bea::t_e7410cd107be96 1-18
+mcp/authentication/sap-btp/token-forwarding/.gitignore
+  s_33c798ce534bea::t_1a9c37a6bf6349 1-3
+mcp/authentication/sap-btp/token-forwarding/.cfignore
+  s_33c798ce534bea::t_15e96d466be200 1-7
+mcp/authentication/sap-btp/token-forwarding/.env.example
+  s_33c798ce534bea::t_629fe38f87cf5e 1-10
+mcp/authentication/sap-btp/token-forwarding/tsconfig.json
+  s_33c798ce534bea::t_1d87da88ddff77 1-20
+mcp/authentication/sap-btp/token-forwarding/src/index.ts
+  s_33c798ce534bea::t_70d8a67e98d2f6 1-592
+mcp/authentication/sap-btp/destination-service/.cfignore
+  s_33c798ce534bea::t_ae0e3e7021a23d 1-7
+mcp/authentication/sap-btp/destination-service/tsconfig.json
+  s_33c798ce534bea::t_06df82ffc527de 1-20
+mcp/authentication/sap-btp/destination-service/package.json
+  s_33c798ce534bea::t_1e001ba02f4ca3 1-25
+mcp/authentication/sap-btp/token-forwarding/package.json
+  s_33c798ce534bea::t_9132882eeb6c5f 1-25
+mcp/authentication/sap-btp/destination-service/pnpm-lock.yaml
+  s_33c798ce534bea::t_36cddc65723c5c 1-1461
+mcp/authentication/sap-btp/token-forwarding/pnpm-lock.yaml
+  s_33c798ce534bea::t_60a25520503836 1-1461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "21b52dc594f73794296598385c5d4cb0a6a239f6",
+  "prompts": {},
+  "sessions": {
+    "s_33c798ce534bea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9b43d0d2-6a08-4ec0-914b-4b29f4de6b3c",
+        "model": "gemini-4-argon"
+      },
+      "human_author": "Alessandro <281597100+alemau-gg@users.noreply.github.com>"
+    }
+  }
+}
