@@ -1,0 +1,33 @@
+mcp/authentication/README.md
+  s_33c798ce534bea::t_2bf49f4ffd0e76 13,19-20
+mcp/authentication/sap-btp/destination-service/.env.example
+  s_33c798ce534bea::t_6efa25945512bb 14-16
+mcp/authentication/sap-btp/destination-service/README.md
+  s_33c798ce534bea::t_b5f5799fc64245 96
+mcp/authentication/sap-btp/README.md
+  s_33c798ce534bea::t_0bef05568e4c18 7-8,31,52,71,76-84,87-110,113-116,123,125
+mcp/authentication/sap-btp/destination-service/src/index.ts
+  s_33c798ce534bea::t_2b649926a082dc 107-112
+  s_33c798ce534bea::t_dcfbb159ea8657 140-145,152,166
+  s_33c798ce534bea::t_5f2b2ac54483d9 227-236,244-245,251,254-258,261,281-292,295-296,305-306
+  s_33c798ce534bea::t_59a03b27e6a0b0 477-481,495-519,522-531,543
+mcp/authentication/sap-btp/token-forwarding/src/index.ts
+  s_33c798ce534bea::t_40e1d2af9c0b9d 105-110,117,131
+  s_33c798ce534bea::t_b3eccdfb792a55 192-201,209-210,216,219-223,226,246-257,260-261,270-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "bbc6d4d7fbf9142323a30c4f4fe1fbc5c638d3d2",
+  "prompts": {},
+  "sessions": {
+    "s_33c798ce534bea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9b43d0d2-6a08-4ec0-914b-4b29f4de6b3c",
+        "model": "gemini-4-argon"
+      },
+      "human_author": "Alessandro <281597100+alemau-gg@users.noreply.github.com>"
+    }
+  }
+}
