@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type {
   OAuthServerProvider,
   AuthorizationParams,
@@ -30,6 +31,24 @@ const ENTRA_CLIENT_SECRET = process.env.ENTRA_CLIENT_SECRET!;
 const RAW_SERVER_URL = process.env.SERVER_URL || "http://localhost:3333";
 const SERVER_URL = RAW_SERVER_URL.startsWith("http") ? RAW_SERVER_URL : `https://${RAW_SERVER_URL}`;
 const PORT = parseInt(process.env.PORT || "3333", 10);
+const ALLOWED_REDIRECT_URI_ORIGINS = new Set(
+  (
+    process.env.ALLOWED_REDIRECT_URI_ORIGINS ||
+    "https://app.langdock.com,http://localhost:3000,http://localhost:3333,http://127.0.0.1:3000,http://127.0.0.1:3333"
+  )
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean)
+);
+
+function isAllowedRedirectUri(uri: string): boolean {
+  try {
+    const parsed = new URL(uri);
+    return ALLOWED_REDIRECT_URI_ORIGINS.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
 
 const ENTRA_AUTHORITY = `https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0`;
 const ENTRA_AUTHORIZE_URL = `${ENTRA_AUTHORITY}/authorize`;
@@ -54,6 +73,12 @@ interface StoredCode {
   redirectUri: string;
 }
 
+interface StoredRefreshToken {
+  clientId: string;
+  entraRefreshToken: string;
+  scopes: string[];
+}
+
 // In-memory client store for DCR
 class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   private clients = new Map<string, OAuthClientInformationFull>();
@@ -67,6 +92,14 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   async registerClient(
     client: OAuthClientInformationFull
   ): Promise<OAuthClientInformationFull> {
+    if (
+      !client.redirect_uris?.length ||
+      !client.redirect_uris.every((u) => isAllowedRedirectUri(String(u)))
+    ) {
+      throw new Error(
+        "Unallowed redirect_uri origin. Add the client origin to ALLOWED_REDIRECT_URI_ORIGINS."
+      );
+    }
     this.clients.set(client.client_id, client);
     return client;
   }
@@ -80,6 +113,7 @@ const authCodes = new Map<string, StoredCode>();
 
 // Active access tokens (keyed by token → AuthInfo)
 const activeTokens = new Map<string, AuthInfo & { entraAccessToken: string }>();
+const refreshTokens = new Map<string, StoredRefreshToken>();
 
 // --- Entra ID OAuth Provider ---
 
@@ -151,6 +185,16 @@ class EntraOAuthProvider implements OAuthServerProvider {
       entraAccessToken: stored.entraAccessToken,
     });
 
+    let opaqueRefreshToken: string | undefined;
+    if (stored.entraRefreshToken) {
+      opaqueRefreshToken = randomUUID();
+      refreshTokens.set(opaqueRefreshToken, {
+        clientId: client.client_id,
+        entraRefreshToken: stored.entraRefreshToken,
+        scopes: stored.scopes,
+      });
+    }
+
     console.log(`Issued access token for client ${client.client_id}`);
 
     return {
@@ -158,22 +202,27 @@ class EntraOAuthProvider implements OAuthServerProvider {
       token_type: "bearer",
       expires_in: expiresIn,
       scope: stored.scopes.join(" "),
-      ...(stored.entraRefreshToken && {
-        refresh_token: stored.entraRefreshToken,
+      ...(opaqueRefreshToken && {
+        refresh_token: opaqueRefreshToken,
       }),
     };
   }
 
   async exchangeRefreshToken(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     refreshToken: string
   ): Promise<OAuthTokens> {
+    const storedRefresh = refreshTokens.get(refreshToken);
+    if (!storedRefresh || storedRefresh.clientId !== client.client_id) {
+      throw new InvalidTokenError("Invalid or unknown refresh token");
+    }
+
     // Exchange refresh token at Entra's token endpoint
     const body = new URLSearchParams({
       client_id: ENTRA_CLIENT_ID,
       client_secret: ENTRA_CLIENT_SECRET,
       grant_type: "refresh_token",
-      refresh_token: refreshToken,
+      refresh_token: storedRefresh.entraRefreshToken,
       scope: ENTRA_SCOPES,
     });
 
@@ -191,10 +240,22 @@ class EntraOAuthProvider implements OAuthServerProvider {
     const tokens = (await response.json()) as Record<string, any>;
     const accessToken = randomUUID();
 
+    refreshTokens.delete(refreshToken);
+    let nextOpaqueRefreshToken: string | undefined;
+    const nextUpstreamRefresh = tokens.refresh_token || storedRefresh.entraRefreshToken;
+    if (nextUpstreamRefresh) {
+      nextOpaqueRefreshToken = randomUUID();
+      refreshTokens.set(nextOpaqueRefreshToken, {
+        clientId: client.client_id,
+        entraRefreshToken: nextUpstreamRefresh,
+        scopes: storedRefresh.scopes,
+      });
+    }
+
     activeTokens.set(accessToken, {
       token: accessToken,
-      clientId: _client.client_id,
-      scopes: tokens.scope ? tokens.scope.split(" ") : [],
+      clientId: client.client_id,
+      scopes: storedRefresh.scopes,
       expiresAt: Math.floor(Date.now() / 1000) + (tokens.expires_in || 3600),
       entraAccessToken: tokens.access_token,
     });
@@ -203,19 +264,19 @@ class EntraOAuthProvider implements OAuthServerProvider {
       access_token: accessToken,
       token_type: "bearer",
       expires_in: tokens.expires_in,
-      scope: tokens.scope,
-      ...(tokens.refresh_token && { refresh_token: tokens.refresh_token }),
+      scope: storedRefresh.scopes.join(" "),
+      ...(nextOpaqueRefreshToken && { refresh_token: nextOpaqueRefreshToken }),
     };
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
     const stored = activeTokens.get(token);
     if (!stored) {
-      throw new Error("Invalid or unknown token");
+      throw new InvalidTokenError("Invalid or unknown token");
     }
     if (stored.expiresAt && stored.expiresAt < Math.floor(Date.now() / 1000)) {
       activeTokens.delete(token);
-      throw new Error("Token has expired");
+      throw new InvalidTokenError("Token has expired");
     }
     return {
       token: stored.token,
@@ -352,6 +413,27 @@ async function main() {
 
   // OAuth provider
   const provider = new EntraOAuthProvider();
+
+  // Auto-register unknown clients on /authorize to survive redeploys
+  app.get("/authorize", async (req: Request, _res: Response, next: NextFunction) => {
+    const clientId = req.query.client_id as string;
+    const redirectUri = req.query.redirect_uri as string;
+    if (clientId && redirectUri && isAllowedRedirectUri(redirectUri)) {
+      const existing = await provider.clientsStore.getClient(clientId);
+      if (!existing) {
+        console.log(`Auto-registering unknown client ${clientId}`);
+        await provider.clientsStore.registerClient({
+          client_id: clientId,
+          client_id_issued_at: Math.floor(Date.now() / 1000),
+          redirect_uris: [redirectUri],
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+          token_endpoint_auth_method: "none",
+        } as OAuthClientInformationFull);
+      }
+    }
+    next();
+  });
 
   // Mount OAuth routes (handles /authorize, /token, /register, /.well-known/*)
   app.use(

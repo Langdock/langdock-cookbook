@@ -76,6 +76,24 @@ function resolveServerUrl(): string {
 const xsuaa = loadXsuaaConfig();
 const SERVER_URL = resolveServerUrl();
 const PORT = parseInt(process.env.PORT || "3333", 10);
+const ALLOWED_REDIRECT_URI_ORIGINS = new Set(
+  (
+    process.env.ALLOWED_REDIRECT_URI_ORIGINS ||
+    "https://app.langdock.com,http://localhost:3000,http://localhost:3333,http://127.0.0.1:3000,http://127.0.0.1:3333"
+  )
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean)
+);
+
+function isAllowedRedirectUri(uri: string): boolean {
+  try {
+    const parsed = new URL(uri);
+    return ALLOWED_REDIRECT_URI_ORIGINS.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
 
 const XSUAA_AUTHORIZE_URL = `${xsuaa.url}/oauth/authorize`;
 const XSUAA_TOKEN_URL = `${xsuaa.url}/oauth/token`;
@@ -120,6 +138,14 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   async registerClient(
     client: OAuthClientInformationFull
   ): Promise<OAuthClientInformationFull> {
+    if (
+      !client.redirect_uris?.length ||
+      !client.redirect_uris.every((u) => isAllowedRedirectUri(String(u)))
+    ) {
+      throw new Error(
+        "Unallowed redirect_uri origin. Add the client origin to ALLOWED_REDIRECT_URI_ORIGINS."
+      );
+    }
     this.clients.set(client.client_id, client);
     return client;
   }
@@ -419,7 +445,7 @@ async function main() {
   });
 
   app.use((req: Request, res: Response, next: NextFunction) => {
-    console.log(`${req.method} ${req.path}`, req.method === "GET" ? req.query : "");
+    console.log(`${req.method} ${req.path}`);
     res.on("finish", () => {
       if (res.statusCode >= 400) {
         console.log(`${req.method} ${req.path} -> ${res.statusCode}`);
@@ -454,7 +480,7 @@ async function main() {
   app.get("/authorize", async (req: Request, _res: Response, next: NextFunction) => {
     const clientId = req.query.client_id as string;
     const redirectUri = req.query.redirect_uri as string;
-    if (clientId && redirectUri) {
+    if (clientId && redirectUri && isAllowedRedirectUri(redirectUri)) {
       const existing = await provider.clientsStore.getClient(clientId);
       if (!existing) {
         console.log(`Auto-registering unknown client ${clientId}`);
