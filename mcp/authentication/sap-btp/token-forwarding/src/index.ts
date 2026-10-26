@@ -102,25 +102,19 @@ interface StoredCode {
   redirectUri: string;
 }
 
+interface StoredRefreshToken {
+  clientId: string;
+  xsuaaRefreshToken: string;
+  scopes: string[];
+}
+
 class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   private clients = new Map<string, OAuthClientInformationFull>();
 
   async getClient(
     clientId: string
   ): Promise<OAuthClientInformationFull | undefined> {
-    let client = this.clients.get(clientId);
-    if (!client && clientId) {
-      client = {
-        client_id: clientId,
-        client_id_issued_at: Math.floor(Date.now() / 1000),
-        redirect_uris: [],
-        grant_types: ["authorization_code", "refresh_token"],
-        response_types: ["code"],
-        token_endpoint_auth_method: "none",
-      };
-      this.clients.set(clientId, client);
-    }
-    return client;
+    return this.clients.get(clientId);
   }
 
   async registerClient(
@@ -134,6 +128,7 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
 const pendingAuths = new Map<string, PendingAuth>();
 const authCodes = new Map<string, StoredCode>();
 const activeTokens = new Map<string, AuthInfo & { xsuaaAccessToken: string }>();
+const refreshTokens = new Map<string, StoredRefreshToken>();
 
 // --- SAP BTP XSUAA OAuth Provider ---
 
@@ -194,6 +189,16 @@ class XsuaaOAuthProvider implements OAuthServerProvider {
       xsuaaAccessToken: stored.xsuaaAccessToken,
     });
 
+    let opaqueRefreshToken: string | undefined;
+    if (stored.xsuaaRefreshToken) {
+      opaqueRefreshToken = randomUUID();
+      refreshTokens.set(opaqueRefreshToken, {
+        clientId: client.client_id,
+        xsuaaRefreshToken: stored.xsuaaRefreshToken,
+        scopes: stored.scopes,
+      });
+    }
+
     console.log(`Issued access token for client ${client.client_id}`);
 
     return {
@@ -201,19 +206,24 @@ class XsuaaOAuthProvider implements OAuthServerProvider {
       token_type: "bearer",
       expires_in: expiresIn,
       scope: stored.scopes.join(" "),
-      ...(stored.xsuaaRefreshToken && {
-        refresh_token: stored.xsuaaRefreshToken,
+      ...(opaqueRefreshToken && {
+        refresh_token: opaqueRefreshToken,
       }),
     };
   }
 
   async exchangeRefreshToken(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     refreshToken: string
   ): Promise<OAuthTokens> {
+    const storedRefresh = refreshTokens.get(refreshToken);
+    if (!storedRefresh || storedRefresh.clientId !== client.client_id) {
+      throw new InvalidTokenError("Invalid or unknown refresh token");
+    }
+
     const body = new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: refreshToken,
+      refresh_token: storedRefresh.xsuaaRefreshToken,
     });
 
     const response = await fetch(XSUAA_TOKEN_URL, {
@@ -233,10 +243,22 @@ class XsuaaOAuthProvider implements OAuthServerProvider {
     const tokens = (await response.json()) as Record<string, any>;
     const accessToken = randomUUID();
 
+    refreshTokens.delete(refreshToken);
+    let nextOpaqueRefreshToken: string | undefined;
+    const nextUpstreamRefresh = tokens.refresh_token || storedRefresh.xsuaaRefreshToken;
+    if (nextUpstreamRefresh) {
+      nextOpaqueRefreshToken = randomUUID();
+      refreshTokens.set(nextOpaqueRefreshToken, {
+        clientId: client.client_id,
+        xsuaaRefreshToken: nextUpstreamRefresh,
+        scopes: storedRefresh.scopes,
+      });
+    }
+
     activeTokens.set(accessToken, {
       token: accessToken,
-      clientId: _client.client_id,
-      scopes: tokens.scope ? tokens.scope.split(" ") : [],
+      clientId: client.client_id,
+      scopes: storedRefresh.scopes,
       expiresAt: Math.floor(Date.now() / 1000) + (tokens.expires_in || 3600),
       xsuaaAccessToken: tokens.access_token,
     });
@@ -245,8 +267,8 @@ class XsuaaOAuthProvider implements OAuthServerProvider {
       access_token: accessToken,
       token_type: "bearer",
       expires_in: tokens.expires_in,
-      scope: tokens.scope,
-      ...(tokens.refresh_token && { refresh_token: tokens.refresh_token }),
+      scope: storedRefresh.scopes.join(" "),
+      ...(nextOpaqueRefreshToken && { refresh_token: nextOpaqueRefreshToken }),
     };
   }
 

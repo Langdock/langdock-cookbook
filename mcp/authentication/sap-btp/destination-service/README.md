@@ -93,6 +93,7 @@ pnpm dev
 | `DESTINATION_CLIENT_ID` | Local only | Destination service client ID (`vcap.destination[0].credentials.clientid`) |
 | `DESTINATION_CLIENT_SECRET` | Local only | Destination service client secret (`vcap.destination[0].credentials.clientsecret`) |
 | `DEFAULT_DESTINATION_NAME` | No | Default BTP destination name when `destinationName` is omitted (default: `ServiceNowPDI`) |
+| `ALLOWED_DESTINATIONS` | No | Comma-separated allowlist of BTP destination names the tool is permitted to resolve (defaults to `DEFAULT_DESTINATION_NAME`) |
 | `SERVER_URL` | No | Public URL of this server (auto-detected from `VCAP_APPLICATION` on BTP; defaults to `http://localhost:3333` locally) |
 | `PORT` | No | Port number (auto-set by Cloud Foundry; defaults to `3333` locally) |
 

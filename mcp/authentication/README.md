@@ -10,13 +10,14 @@ user authentication to an identity provider:
 | Keycloak | [`keycloak-dcr/`](keycloak-dcr/) |
 | SAP BTP (XSUAA & Destination Service) | [`sap-btp/`](sap-btp/) |
 
-Both follow the **same pattern** — only the provider-specific configuration
+All follow the **same pattern** — only the provider-specific configuration
 differs. Read this page once, then pick the recipe for your IdP.
 
 ## The pattern: an OAuth 2.0 proxy
 
 The MCP server acts as an OAuth 2.0 **authorization server** to its clients while
-delegating the actual user login to an upstream identity provider (Okta or Entra):
+delegating the actual user login to an upstream identity provider (Okta, Entra,
+Keycloak, or SAP BTP XSUAA):
 
 ```
 MCP client  ──(OAuth)──>  MCP server (proxy)  ──(OAuth)──>  Identity provider
