@@ -1,0 +1,34 @@
+mcp/apps/servicenow/src/ui/otto-chat.html
+  s_96648a3efc17ba::t_35545d1afd1c50 435-436
+  s_96648a3efc17ba::t_9f3eb376bb7d2e 577-580,594
+mcp/apps/servicenow/README.md
+  s_96648a3efc17ba::t_74c57000ec21aa 255-256
+mcp/apps/servicenow/src/otto/conversations.ts
+  s_96648a3efc17ba::t_1d6bd7e9bf097f 366,371,373,378-383
+mcp/apps/servicenow/src/ui/ticket.html
+  s_96648a3efc17ba::t_15ab8de8bbffb0 546
+  s_96648a3efc17ba::t_e1b2135decfddf 1430-1438
+  s_96648a3efc17ba::t_b91fd102703c6d 1456-1463
+mcp/apps/servicenow/src/ui/form.html
+  s_96648a3efc17ba::t_c369659d214725 665-666
+  s_96648a3efc17ba::t_dddc44bb09f919 656-664,667-669,673
+  s_96648a3efc17ba::t_01525a37b1eb20 444-445
+mcp/apps/servicenow/src/ui/ticket-list.html
+  s_96648a3efc17ba::t_15ab8de8bbffb0 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9dba629b68e703b4b1ba5d33abd22768a57a260e",
+  "prompts": {},
+  "sessions": {
+    "s_96648a3efc17ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f5e01313-d08e-4782-a3e2-3bc4b2d2d55b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}

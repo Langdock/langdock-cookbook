@@ -1,0 +1,48 @@
+mcp/apps/servicenow/src/tasks/taskRegistry.ts
+  s_1b322228885fd6::t_cc1363a43cdbac 1-193
+mcp/apps/servicenow/src/tasks/watchTicket.ts
+  s_1b322228885fd6::t_1bc64e3ba9b229 126,130
+  s_1b322228885fd6::t_46e9c319716a1e 1-125,127-129,131-165,173-176,180-273,275-287,296-417
+  s_1b322228885fd6::t_2704ffe0a3c606 288-295
+  s_1b322228885fd6::t_056abd44a8ab2d 274
+  s_1b322228885fd6::t_d9683f7f800086 166-172,177-179
+mcp/apps/servicenow/src/index.ts
+  s_1b322228885fd6::t_1325bf9cc09e38 59
+  s_1b322228885fd6::t_f153d4afc1626e 1138-1194,1218-1225
+  s_1b322228885fd6::t_884a7e93c1df62 179-183
+  s_1b322228885fd6::t_663270ceaa0fde 1195-1217
+  s_1b322228885fd6::t_f4b5b668b4b834 246,248-262
+  s_1b322228885fd6::t_7fea464c09a230 37-48
+  s_1b322228885fd6::t_cda9a62540ee16 73
+  s_1b322228885fd6::t_0216b2aae59d12 10
+mcp/README.md
+  s_1b322228885fd6::t_945100edaabbbf 14
+mcp/apps/servicenow/README.md
+  s_1b322228885fd6::t_fde5eecc1a0862 106
+  s_1b322228885fd6::t_7c7712bc3a2086 237-308
+  s_1b322228885fd6::t_21c97dce22139e 10
+  s_1b322228885fd6::t_9a543be6834e34 342
+  s_1b322228885fd6::t_a3f51dff1a2d28 82-83
+mcp/apps/servicenow/src/tasks/taskOwner.ts
+  s_1b322228885fd6::t_14508218acd321 1-28
+mcp/apps/servicenow/src/servicenow/client.ts
+  s_1b322228885fd6::t_2cadaed7f05308 989
+  s_1b322228885fd6::t_bf2488a75820b4 983,990-991,995-999,1005
+  s_1b322228885fd6::t_37c028ac1f9b50 1034,1043,1060,1067-1095
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a1154311df19388bcbabb94ca9bfd3c54a5f7166",
+  "prompts": {},
+  "sessions": {
+    "s_1b322228885fd6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4f57506f-53d1-489b-8dc0-0a6ff5ae5139",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Niklas Meixner <niklasmeixner@MacBook-Pro-von-Niklas.local>"
+    }
+  }
+}
