@@ -137,7 +137,19 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   async getClient(
     clientId: string
   ): Promise<OAuthClientInformationFull | undefined> {
-    return this.clients.get(clientId);
+    let client = this.clients.get(clientId);
+    if (!client && clientId) {
+      client = {
+        client_id: clientId,
+        client_id_issued_at: Math.floor(Date.now() / 1000),
+        redirect_uris: [],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+      };
+      this.clients.set(clientId, client);
+    }
+    return client;
   }
 
   async registerClient(
