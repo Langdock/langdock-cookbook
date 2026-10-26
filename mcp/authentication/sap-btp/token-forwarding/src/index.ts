@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type {
   OAuthServerProvider,
   AuthorizationParams,
@@ -240,11 +241,11 @@ class XsuaaOAuthProvider implements OAuthServerProvider {
   async verifyAccessToken(token: string): Promise<AuthInfo> {
     const stored = activeTokens.get(token);
     if (!stored) {
-      throw new Error("Invalid or unknown token");
+      throw new InvalidTokenError("Invalid or unknown token");
     }
     if (stored.expiresAt && stored.expiresAt < Math.floor(Date.now() / 1000)) {
       activeTokens.delete(token);
-      throw new Error("Token has expired");
+      throw new InvalidTokenError("Token has expired");
     }
     return {
       token: stored.token,
