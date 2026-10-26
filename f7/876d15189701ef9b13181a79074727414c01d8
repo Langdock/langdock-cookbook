@@ -1,0 +1,47 @@
+mcp/authentication/keycloak-dcr/src/index.ts
+  s_33c798ce534bea::t_dac355d7df230e 6
+  s_33c798ce534bea::t_1a3c0120c704dd 403
+  s_33c798ce534bea::t_670f3c8851875f 81-86,99-106,115
+  s_33c798ce534bea::t_abae3f72a7762f 439
+  s_33c798ce534bea::t_58b904d02dc94b 180-189,197-198,204,207-211,214,235-246,249-250,259-260,267,271
+  s_33c798ce534bea::t_0fbc121ff7a67d 34-51
+mcp/authentication/sap-btp/token-forwarding/src/index.ts
+  s_33c798ce534bea::t_cabc77b9e904ee 483
+  s_33c798ce534bea::t_a740bcaaf75b01 141-148
+  s_33c798ce534bea::t_f10fc40f847abb 79-96
+  s_33c798ce534bea::t_2dc49fd1d3b97b 448
+mcp/authentication/okta-dcr/src/index.ts
+  s_33c798ce534bea::t_72e9b800e803df 6
+  s_33c798ce534bea::t_d62ee61724c803 76-81,94-101,110
+  s_33c798ce534bea::t_063b9c507139fb 33-50
+  s_33c798ce534bea::t_ae47ed70178fde 386
+  s_33c798ce534bea::t_218a9dd8100151 417
+  s_33c798ce534bea::t_571aea954fc5df 176-185,193-194,200,203-207,210,231-242,245-246,255-256,263,267
+mcp/authentication/entra-dcr/src/index.ts
+  s_33c798ce534bea::t_0257bf9e0f7686 76-81,95-102,116
+  s_33c798ce534bea::t_45aaa935053944 6
+  s_33c798ce534bea::t_4976600dba3ca2 34-51
+  s_33c798ce534bea::t_038b2901628855 188-197,205-206,212,215-219,225,243-254,257-258,267-268,275,279
+  s_33c798ce534bea::t_3f4110615cff4a 417-437
+mcp/authentication/sap-btp/destination-service/src/index.ts
+  s_33c798ce534bea::t_ac8edad64aece5 115-132
+  s_33c798ce534bea::t_8f73548a923966 176-183
+  s_33c798ce534bea::t_529805a14bb0fb 694
+  s_33c798ce534bea::t_ef9166bca0fed2 659
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f7876d15189701ef9b13181a79074727414c01d8",
+  "prompts": {},
+  "sessions": {
+    "s_33c798ce534bea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9b43d0d2-6a08-4ec0-914b-4b29f4de6b3c",
+        "model": "gemini-4-argon"
+      },
+      "human_author": "Alessandro <281597100+alemau-gg@users.noreply.github.com>"
+    }
+  }
+}
