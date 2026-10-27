@@ -23,7 +23,7 @@
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.0.0",
-    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@types/cors": "^2.8.19",
     "cors": "^2.8.6",
     "express": "^5.2.1",
