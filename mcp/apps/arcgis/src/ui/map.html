@@ -118,10 +118,27 @@
           this.version = options.version;
           this.onrenderdata = null;
           this._queuedMessages = [];
+          this._messageId = 0;
+          this._pendingRequests = new Map();
         }
         connect() {
           window.addEventListener("message", (event) => {
             const message = event.data;
+            if (message?.jsonrpc === "2.0" && message.method && message.id != null) {
+              this._answerHostRequest(message);
+              return;
+            }
+            if (
+              message?.jsonrpc === "2.0" &&
+              message.id != null &&
+              this._pendingRequests.has(message.id)
+            ) {
+              const { resolve, reject } = this._pendingRequests.get(message.id);
+              this._pendingRequests.delete(message.id);
+              if (message.error) reject(new Error(message.error.message || "Request failed"));
+              else resolve(message.result);
+              return;
+            }
             let renderData = null;
             if (
               message?.method === "ui/notifications/tool-result" &&
@@ -146,7 +163,55 @@
               else this._queuedMessages.push(renderData);
             }
           });
-          window.parent.postMessage({ type: "appReady", name: this.name }, "*");
+          this._initialize();
+        }
+        // MCP Apps handshake. Hosts deliver tool input and results only after
+        // ui/notifications/initialized, and Langdock reuses an open app for
+        // later tool calls (add_layer, set_basemap, ...) only once it is in
+        // the side panel (pip).
+        async _initialize() {
+          try {
+            const result = await this.request("ui/initialize", {
+              appInfo: { name: this.name, version: this.version },
+              appCapabilities: { availableDisplayModes: ["inline", "pip", "fullscreen"] },
+              protocolVersion: "2026-01-26",
+            });
+            window.parent.postMessage(
+              { jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} },
+              "*",
+            );
+            // The map fills the frame, so report a preferred height rather than
+            // the content height, which would only echo the frame's own size.
+            window.parent.postMessage(
+              { jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: 600 } },
+              "*",
+            );
+            const context = result?.hostContext || {};
+            if (
+              context.displayMode !== "pip" &&
+              (context.availableDisplayModes || []).includes("pip")
+            ) {
+              await this.request("ui/request-display-mode", { mode: "pip" });
+            }
+          } catch (e) {
+            console.warn("MCP Apps handshake failed:", e);
+          }
+        }
+        _answerHostRequest(message) {
+          const known = message.method === "ui/resource-teardown" || message.method === "ping";
+          window.parent.postMessage(
+            known
+              ? { jsonrpc: "2.0", id: message.id, result: {} }
+              : { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Method not found" } },
+            "*",
+          );
+        }
+        request(method, params) {
+          const id = ++this._messageId;
+          return new Promise((resolve, reject) => {
+            this._pendingRequests.set(id, { resolve, reject });
+            window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+          });
         }
         processQueue() {
           while (this._queuedMessages.length > 0 && this.onrenderdata) {

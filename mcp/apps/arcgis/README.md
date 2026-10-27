@@ -112,6 +112,8 @@ Map-mutating tools all declare `_meta.ui.resourceUri = ui://arcgis/map`, so the 
 
 `ui://arcgis/map` — interactive ArcGIS Maps SDK view of the current web map.
 
+The map completes the [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) handshake (`ui/initialize`, then `ui/notifications/initialized`) before the host sends it tool results, and then asks for the side panel (`pip`). In Langdock, later map edits (`add_layer`, `set_basemap`, …) are sent to the open map in the side panel instead of opening a new one, because they share the map's resource URI.
+
 ## Client configuration
 
 ```json
