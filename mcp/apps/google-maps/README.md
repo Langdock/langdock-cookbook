@@ -148,6 +148,8 @@ Display an interactive Google Map. Shows search results as markers, directions a
 
 The interactive map UI rendered by the `render_map` tool, served as an MCP App resource.
 
+The map completes the [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) handshake (`ui/initialize`, then `ui/notifications/initialized`) before the host sends it tool results.
+
 ## Client Configuration
 
 ```json
