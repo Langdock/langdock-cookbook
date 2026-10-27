@@ -1,0 +1,7 @@
+node_modules
+src
+tsconfig.json
+pnpm-lock.yaml
+.env*
+README.md
+xs-security.json

@@ -1,0 +1,16 @@
+---
+applications:
+  - name: mcp-sap-btp-token-forwarding
+    memory: 256M
+    disk_quota: 512M
+    instances: 1
+    random-route: true
+    buildpacks:
+      - nodejs_buildpack
+    command: node dist/index.js
+    health-check-type: http
+    health-check-http-endpoint: /health
+    env:
+      NODE_ENV: production
+    services:
+      - mcp-xsuaa

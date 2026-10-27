@@ -1,0 +1,12 @@
+{
+  "xsappname": "mcp-sap-btp-destination",
+  "tenant-mode": "dedicated",
+  "oauth2-configuration": {
+    "token-validity": 3600,
+    "refresh-token-validity": 86400,
+    "redirect-uris": [
+      "http://localhost:3333/xsuaa/callback",
+      "https://*.cfapps.*.hana.ondemand.com/xsuaa/callback"
+    ]
+  }
+}

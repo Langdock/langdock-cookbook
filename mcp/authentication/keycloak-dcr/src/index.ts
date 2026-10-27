@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type {
   OAuthServerProvider,
   AuthorizationParams,
@@ -30,6 +31,24 @@ const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID!;
 const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET!;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3333";
 const PORT = parseInt(process.env.PORT || "3333", 10);
+const ALLOWED_REDIRECT_URI_ORIGINS = new Set(
+  (
+    process.env.ALLOWED_REDIRECT_URI_ORIGINS ||
+    "https://app.langdock.com,http://localhost:3000,http://localhost:3333,http://127.0.0.1:3000,http://127.0.0.1:3333"
+  )
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean)
+);
+
+function isAllowedRedirectUri(uri: string): boolean {
+  try {
+    const parsed = new URL(uri);
+    return ALLOWED_REDIRECT_URI_ORIGINS.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
 
 // Realm base, e.g. https://keycloak.example.com/realms/my-realm
 // (legacy WildFly distributions need /auth in KEYCLOAK_URL, e.g. https://host/auth)
@@ -59,6 +78,12 @@ interface StoredCode {
   redirectUri: string;
 }
 
+interface StoredRefreshToken {
+  clientId: string;
+  keycloakRefreshToken: string;
+  scopes: string[];
+}
+
 class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   private clients = new Map<string, OAuthClientInformationFull>();
 
@@ -71,6 +96,14 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   async registerClient(
     client: OAuthClientInformationFull
   ): Promise<OAuthClientInformationFull> {
+    if (
+      !client.redirect_uris?.length ||
+      !client.redirect_uris.every((u) => isAllowedRedirectUri(String(u)))
+    ) {
+      throw new Error(
+        "Unallowed redirect_uri origin. Add the client origin to ALLOWED_REDIRECT_URI_ORIGINS."
+      );
+    }
     this.clients.set(client.client_id, client);
     return client;
   }
@@ -79,6 +112,7 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
 const pendingAuths = new Map<string, PendingAuth>();
 const authCodes = new Map<string, StoredCode>();
 const activeTokens = new Map<string, AuthInfo & { keycloakAccessToken: string }>();
+const refreshTokens = new Map<string, StoredRefreshToken>();
 
 // --- Keycloak OAuth Provider ---
 
@@ -143,6 +177,16 @@ class KeycloakOAuthProvider implements OAuthServerProvider {
       keycloakAccessToken: stored.keycloakAccessToken,
     });
 
+    let opaqueRefreshToken: string | undefined;
+    if (stored.keycloakRefreshToken) {
+      opaqueRefreshToken = randomUUID();
+      refreshTokens.set(opaqueRefreshToken, {
+        clientId: client.client_id,
+        keycloakRefreshToken: stored.keycloakRefreshToken,
+        scopes: stored.scopes,
+      });
+    }
+
     console.log(`Issued access token for client ${client.client_id}`);
 
     return {
@@ -150,19 +194,24 @@ class KeycloakOAuthProvider implements OAuthServerProvider {
       token_type: "bearer",
       expires_in: expiresIn,
       scope: stored.scopes.join(" "),
-      ...(stored.keycloakRefreshToken && {
-        refresh_token: stored.keycloakRefreshToken,
+      ...(opaqueRefreshToken && {
+        refresh_token: opaqueRefreshToken,
       }),
     };
   }
 
   async exchangeRefreshToken(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     refreshToken: string
   ): Promise<OAuthTokens> {
+    const storedRefresh = refreshTokens.get(refreshToken);
+    if (!storedRefresh || storedRefresh.clientId !== client.client_id) {
+      throw new InvalidTokenError("Invalid or unknown refresh token");
+    }
+
     const body = new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: refreshToken,
+      refresh_token: storedRefresh.keycloakRefreshToken,
       scope: KEYCLOAK_SCOPES,
     });
 
@@ -183,10 +232,22 @@ class KeycloakOAuthProvider implements OAuthServerProvider {
     const tokens = (await response.json()) as Record<string, any>;
     const accessToken = randomUUID();
 
+    refreshTokens.delete(refreshToken);
+    let nextOpaqueRefreshToken: string | undefined;
+    const nextUpstreamRefresh = tokens.refresh_token || storedRefresh.keycloakRefreshToken;
+    if (nextUpstreamRefresh) {
+      nextOpaqueRefreshToken = randomUUID();
+      refreshTokens.set(nextOpaqueRefreshToken, {
+        clientId: client.client_id,
+        keycloakRefreshToken: nextUpstreamRefresh,
+        scopes: storedRefresh.scopes,
+      });
+    }
+
     activeTokens.set(accessToken, {
       token: accessToken,
-      clientId: _client.client_id,
-      scopes: tokens.scope ? tokens.scope.split(" ") : [],
+      clientId: client.client_id,
+      scopes: storedRefresh.scopes,
       expiresAt: Math.floor(Date.now() / 1000) + (tokens.expires_in || 3600),
       keycloakAccessToken: tokens.access_token,
     });
@@ -195,19 +256,19 @@ class KeycloakOAuthProvider implements OAuthServerProvider {
       access_token: accessToken,
       token_type: "bearer",
       expires_in: tokens.expires_in,
-      scope: tokens.scope,
-      ...(tokens.refresh_token && { refresh_token: tokens.refresh_token }),
+      scope: storedRefresh.scopes.join(" "),
+      ...(nextOpaqueRefreshToken && { refresh_token: nextOpaqueRefreshToken }),
     };
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
     const stored = activeTokens.get(token);
     if (!stored) {
-      throw new Error("Invalid or unknown token");
+      throw new InvalidTokenError("Invalid or unknown token");
     }
     if (stored.expiresAt && stored.expiresAt < Math.floor(Date.now() / 1000)) {
       activeTokens.delete(token);
-      throw new Error("Token has expired");
+      throw new InvalidTokenError("Token has expired");
     }
     return {
       token: stored.token,
@@ -339,7 +400,7 @@ async function main() {
 
   // Request logging (status code logged when the response finishes)
   app.use((req: Request, res: Response, next: NextFunction) => {
-    console.log(`${req.method} ${req.path}`, req.method === "GET" ? req.query : "");
+    console.log(`${req.method} ${req.path}`);
     res.on("finish", () => {
       if (res.statusCode >= 400) {
         console.log(`${req.method} ${req.path} -> ${res.statusCode}`);
@@ -375,7 +436,7 @@ async function main() {
   app.get("/authorize", async (req: Request, _res: Response, next: NextFunction) => {
     const clientId = req.query.client_id as string;
     const redirectUri = req.query.redirect_uri as string;
-    if (clientId && redirectUri) {
+    if (clientId && redirectUri && isAllowedRedirectUri(redirectUri)) {
       const existing = await provider.clientsStore.getClient(clientId);
       if (!existing) {
         console.log(`Auto-registering unknown client ${clientId}`);
